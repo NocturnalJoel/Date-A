@@ -36,7 +36,10 @@ struct Date_AApp: App {
                                     .environmentObject(model)
                             }
                         }
-                    }  // Close NavigationView
+                    }
+                    .onAppear {
+                                    model.checkAuthStatus()
+                                }
                 }
     }
 

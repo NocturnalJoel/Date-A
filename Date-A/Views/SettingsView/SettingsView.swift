@@ -178,24 +178,54 @@ struct SettingsView: View {
                 // Save Button
                 Button {
                     Task {
-                        // Implement save modifications
-                    }
+                            do {
+                                isLoading = true  // Use your existing loading state
+                                try await model.updateUserSettings(
+                                    images: selectedImages,
+                                    minAge: minAge,
+                                    maxAge: maxAge,
+                                    genderPreference: selectedPreference
+                                )
+                                isLoading = false
+                                // Optional: Show success message using an alert state
+                            } catch {
+                                isLoading = false
+                                // Handle error - you might want to add an @State for error alerts
+                                print("❌ Error updating settings: \(error.localizedDescription)")
+                            }
+                        }
                 } label: {
-                    Text("Save Modifications")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color.blue)
-                        .cornerRadius(16)
+                    
+                    if isLoading {
+                        
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                        
+                        } else {
+                            
+                            Text("Save Modifications")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(Color.blue)
+                                .cornerRadius(16)
+                        }
+                    
                 }
                 .padding(.top, 8)
                 
                 // Log Out Button
                 Button {
                     Task {
-                        // Implement logout
-                    }
+                            do {
+                                try await model.signOut()
+                            } catch {
+                                print("❌ Error logging out: \(error.localizedDescription)")
+                            }
+                        }
                 } label: {
                     Text("Log Out")
                         .font(.system(size: 17, weight: .semibold))

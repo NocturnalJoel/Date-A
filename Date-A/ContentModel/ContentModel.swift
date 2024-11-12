@@ -6,6 +6,7 @@ import Photos
 import SwiftUI 
 
 class ContentModel: ObservableObject {
+    @AppStorage("isLoggedIn") var isLoggedIn = false
     @Published var currentUser: User?
     @Published var errorMessage = ""
     @Published var isLoading = false
@@ -37,6 +38,7 @@ class ContentModel: ObservableObject {
             
             DispatchQueue.main.async {
                 self.currentUser = decodedUser
+                self.isLoggedIn = true
             }
         } catch {
             DispatchQueue.main.async {
@@ -152,6 +154,7 @@ class ContentModel: ObservableObject {
             
             DispatchQueue.main.async {
                 self.currentUser = newUser
+                self.isLoggedIn = true
             }
             
             print("🎉 Account creation completed successfully!")
@@ -163,6 +166,85 @@ class ContentModel: ObservableObject {
             throw error
         }
     }
+    
+    func checkAuthStatus() {
+            // Simply check if user is logged in with Firebase
+            if Auth.auth().currentUser != nil {
+                isLoggedIn = true
+            } else {
+                isLoggedIn = false
+            }
+        }
+    
+    func signOut() async throws {
+            do {
+                try Auth.auth().signOut()
+                await MainActor.run {
+                    isLoggedIn = false
+                    currentUser = nil
+                }
+            } catch {
+                print("❌ Error signing out: \(error.localizedDescription)")
+                throw error
+            }
+        }
+    
+    func updateUserSettings(images: [UIImage], minAge: Double, maxAge: Double, genderPreference: User.Gender) async throws {
+            guard var updatedUser = currentUser else {
+                throw NSError(domain: "ContentModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "No current user found"])
+            }
+            
+            let db = Firestore.firestore()
+            let storage = Storage.storage()
+            var pictureURLs: [String] = []
+            
+            // Only process images if they've changed from current user's images
+            if images.count != updatedUser.pictureURLs.count {
+                // Delete existing images from Storage
+                for urlString in updatedUser.pictureURLs {
+                    if let url = URL(string: urlString) {
+                        let imagePath = storage.reference(forURL: url.absoluteString)
+                        try? await imagePath.delete()
+                    }
+                }
+                
+                // Upload new images
+                for (index, image) in images.enumerated() {
+                    guard let imageData = image.jpegData(compressionQuality: 0.7) else { continue }
+                    
+                    let imagePath = "users/\(updatedUser.id)/profile_\(index).jpg"
+                    let imageRef = storage.reference().child(imagePath)
+                    
+                    _ = try await imageRef.putDataAsync(imageData)
+                    let downloadURL = try await imageRef.downloadURL()
+                    pictureURLs.append(downloadURL.absoluteString)
+                }
+            } else {
+                pictureURLs = updatedUser.pictureURLs
+            }
+            
+            // Update user model
+            updatedUser.pictureURLs = pictureURLs
+            updatedUser.minAgePreference = Int(minAge)
+            updatedUser.maxAgePreference = Int(maxAge)
+            updatedUser.genderPreference = genderPreference
+            
+            // Create dictionary for Firestore update
+            let userData: [String: Any] = [
+                "pictureURLs": pictureURLs,
+                "minAgePreference": Int(minAge),
+                "maxAgePreference": Int(maxAge),
+                "genderPreference": genderPreference.rawValue
+            ]
+            
+            // Update Firestore
+            try await db.collection("users").document(updatedUser.id).updateData(userData)
+            
+            // Update published current user
+            await MainActor.run {
+                self.currentUser = updatedUser
+            }
+        }
     
     func requestPermission() async -> Bool {
             let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
