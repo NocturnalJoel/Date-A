@@ -15,6 +15,72 @@ class ContentModel: ObservableObject {
     private let storage = Storage.storage()
     private let db = Firestore.firestore()
     
+    //
+    @Published var currentProfile: User?
+    @Published var nextProfile: User?
+    @Published var isLoadingProfiles = false
+        
+    private var profileQueue: [User] = []
+    private var lastFetchedUserId: String?
+    
+    func startFetchingProfiles() {
+            Task { await fetchProfiles() }
+        }
+        
+        @MainActor
+        private func fetchProfiles() async {
+        guard !isLoadingProfiles else { return }
+        isLoadingProfiles = true
+        
+        do {
+            var query = db.collection("users").limit(to: 5)
+            
+            if let currentUserId = Auth.auth().currentUser?.uid {
+                query = query.whereField("id", isNotEqualTo: currentUserId)
+            }
+            
+            if let lastUserId = lastFetchedUserId {
+                let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
+                query = query.start(afterDocument: lastDoc)
+            }
+            
+            let newProfiles = try await query.getDocuments().documents.compactMap {
+                try? $0.data(as: User.self)
+            }
+            
+            lastFetchedUserId = newProfiles.last?.id
+            profileQueue.append(contentsOf: newProfiles)
+            
+            // Set up profiles if needed - with safety checks
+            if currentProfile == nil && !profileQueue.isEmpty {
+                currentProfile = profileQueue.removeFirst()
+                // Only set nextProfile if we have another profile available
+                if !profileQueue.isEmpty {
+                    nextProfile = profileQueue.removeFirst()
+                }
+            }
+            
+            isLoadingProfiles = false
+        } catch {
+            print("Error fetching profiles: \(error)")
+            isLoadingProfiles = false
+        }
+    }
+        
+        func moveToNextProfile() {
+            currentProfile = nextProfile
+            nextProfile = profileQueue.isEmpty ? nil : profileQueue.removeFirst()
+            
+            // Fetch more if queue is getting low
+            if profileQueue.count < 2 {
+                Task { await fetchProfiles() }
+            }
+        }
+    
+    //
+    
+    
+    
     func signIn(email: String, password: String) async throws {
         DispatchQueue.main.async {
             self.isLoading = true

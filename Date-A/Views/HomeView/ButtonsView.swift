@@ -7,6 +7,9 @@
 import SwiftUI
 
 struct ButtonsView: View {
+
+    @EnvironmentObject var model: ContentModel
+
     var body: some View {
         HStack(spacing: 40) {
             // Dislike Button
@@ -24,7 +27,7 @@ struct ButtonsView: View {
             
             // Like Button
             Button(action: {
-                // Like action will be added later
+                model.moveToNextProfile()
             }) {
                 Image(systemName: "heart.fill")
                     .font(.title)
