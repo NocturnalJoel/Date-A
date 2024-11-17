@@ -207,7 +207,7 @@ class ContentModel: ObservableObject {
                 genderPreference: genderPreference,
                 email: email,
                 pictureURLs: pictureURLs,
-                timesShown: 0,
+                timesDisliked: 0,
                 timesLiked: 0,
                 minAgePreference: 18,
                 maxAgePreference: 99
@@ -339,4 +339,85 @@ class ContentModel: ObservableObject {
                 return false
             }
         }
+    
+    func likeUser(_ likedUser: User) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
+        }
+        
+        // Create batch write
+        let batch = db.batch()
+        
+        // Add to current user's likes_sent
+        let likeSentRef = db.collection("users").document(currentUserId)
+            .collection("likes_sent").document(likedUser.id)
+        batch.setData([:], forDocument: likeSentRef)  // Empty document, just need the ID
+        
+        // Add to other user's likes_received
+        let likeReceivedRef = db.collection("users").document(likedUser.id)
+            .collection("likes_received").document(currentUserId)
+        batch.setData([:], forDocument: likeReceivedRef)  // Empty document, just need the ID
+        
+        // Increment timesLiked for the liked user
+        let userRef = db.collection("users").document(likedUser.id)
+            batch.updateData(["timesLiked": FieldValue.increment(Int64(1))], forDocument: userRef)
+        
+        // Commit the batch
+        try await batch.commit()
+        
+        // Check for match
+        let otherUserLikes = try await db.collection("users")
+            .document(likedUser.id)
+            .collection("likes_sent")
+            .document(currentUserId)
+            .getDocument()
+        
+        if otherUserLikes.exists {
+            // It's a match! Handle match creation here
+            print("It's a match!")
+            // We can implement match creation later
+        }
+        
+        // Move to next profile
+        await MainActor.run {
+            moveToNextProfile()
+        }
+    }
+    
+    func dislikeUser(_ dislikedUser: User) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
+        }
+        
+        // Create batch write
+        let batch = db.batch()
+        
+        // Add to current user's dislikes subcollection
+        let dislikeRef = db.collection("users").document(currentUserId)
+            .collection("dislikes").document(dislikedUser.id)
+        batch.setData([:], forDocument: dislikeRef)
+        
+        // Increment timesDisliked for the disliked user
+        let userRef = db.collection("users").document(dislikedUser.id)
+        batch.updateData(["timesDisliked": FieldValue.increment(Int64(1))], forDocument: userRef)
+        
+        // Check if the disliked user had previously liked the current user
+        let previousLikeRef = db.collection("users").document(currentUserId)
+            .collection("likes_received").document(dislikedUser.id)
+        
+        let previousLikeDoc = try await previousLikeRef.getDocument()
+        
+        if previousLikeDoc.exists {
+            // Remove from current user's likes_received
+            batch.deleteDocument(previousLikeRef)
+        }
+        
+        // Commit the batch
+        try await batch.commit()
+        
+        // Move to next profile
+        await MainActor.run {
+            moveToNextProfile()
+        }
+    }
 }

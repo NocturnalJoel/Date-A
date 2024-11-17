@@ -9,10 +9,11 @@ struct User: Identifiable, Codable, Equatable {
     var genderPreference: Gender
     var email: String
     var pictureURLs: [String]
-    var timesShown: Int
+    var timesDisliked: Int
     var timesLiked: Int
     var minAgePreference: Int 
     var maxAgePreference: Int
+
     
     enum Gender: String, Codable, CaseIterable {
         case male = "Male"

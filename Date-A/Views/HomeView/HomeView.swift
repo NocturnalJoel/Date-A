@@ -13,23 +13,7 @@ struct HomeView: View {
     @State private var offset: CGFloat = 0
 
     // Sample user for preview
-    let sampleUser = User(
-        id: "1",
-        firstName: "Emma",
-        age: 28,
-        gender: .female,
-        genderPreference: .male,
-        email: "emma@example.com",
-        pictureURLs: [
-            "https://example.com/photo1.jpg",
-            "https://example.com/photo2.jpg",
-            "https://example.com/photo3.jpg"
-        ],
-        timesShown: 0,
-        timesLiked: 0,
-        minAgePreference: 18,
-        maxAgePreference: 99
-    )
+
     
     var body: some View {
         NavigationStack {

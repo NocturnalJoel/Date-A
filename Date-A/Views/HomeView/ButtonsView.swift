@@ -14,7 +14,11 @@ struct ButtonsView: View {
         HStack(spacing: 40) {
             // Dislike Button
             Button(action: {
-                // Dislike action will be added later
+                if let currentProfile = model.currentProfile {
+                        Task {
+                            try? await model.dislikeUser(currentProfile)
+                        }
+                    }
             }) {
                 Image(systemName: "xmark")
                     .font(.title)
@@ -27,7 +31,11 @@ struct ButtonsView: View {
             
             // Like Button
             Button(action: {
-                model.moveToNextProfile()
+                if let currentProfile = model.currentProfile {
+                        Task {
+                            try? await model.likeUser(currentProfile)
+                        }
+                    }
             }) {
                 Image(systemName: "heart.fill")
                     .font(.title)
@@ -45,13 +53,3 @@ struct ButtonsView: View {
     }
 }
 
-// Preview provider
-struct ButtonsView_Previews: PreviewProvider {
-    static var previews: some View {
-        VStack {
-            Spacer()
-            ButtonsView()
-        }
-        .previewLayout(.sizeThatFits)
-    }
-}
