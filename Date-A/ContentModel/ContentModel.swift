@@ -374,6 +374,7 @@ class ContentModel: ObservableObject {
         
         if otherUserLikes.exists {
             // It's a match! Handle match creation here
+            try await createMatch(currentUserId: currentUserId, matchedUserId: likedUser.id)
             print("It's a match!")
             // We can implement match creation later
         }
@@ -419,5 +420,31 @@ class ContentModel: ObservableObject {
         await MainActor.run {
             moveToNextProfile()
         }
+    }
+    
+    func createMatch(currentUserId: String, matchedUserId: String) async throws {
+        let batch = db.batch()
+        
+        // Generate a unique match ID
+        let matchId = [currentUserId, matchedUserId].sorted().joined(separator: "_")
+        
+        // Create match document in matches collection
+        let matchData: [String: Any] = [
+            "users": [currentUserId, matchedUserId]
+        ]
+        let matchRef = db.collection("matches").document(matchId)
+        batch.setData(matchData, forDocument: matchRef)
+        
+        // Add match reference to both users' matches collection
+        let currentUserMatchRef = db.collection("users").document(currentUserId)
+            .collection("matches").document(matchId)
+        let matchedUserMatchRef = db.collection("users").document(matchedUserId)
+            .collection("matches").document(matchId)
+        
+        // Empty documents - just need the reference
+        batch.setData([:], forDocument: currentUserMatchRef)
+        batch.setData([:], forDocument: matchedUserMatchRef)
+        
+        try await batch.commit()
     }
 }
