@@ -23,6 +23,10 @@ class ContentModel: ObservableObject {
     private var profileQueue: [User] = []
     private var lastFetchedUserId: String?
     
+    @Published var matches: [User] = []
+    
+    
+    
     func startFetchingProfiles() {
             Task { await fetchProfiles() }
         }
@@ -446,5 +450,44 @@ class ContentModel: ObservableObject {
         batch.setData([:], forDocument: matchedUserMatchRef)
         
         try await batch.commit()
+    }
+    
+    func fetchMatches() async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
+        }
+        
+        let matchDocs = try await db.collection("users")
+            .document(currentUserId)
+            .collection("matches")
+            .getDocuments()
+        
+        var fetchedUsers: [User] = []
+        
+        for matchDoc in matchDocs.documents {
+            // Get the full match document to get both user IDs
+            let match = try await db.collection("matches")
+                .document(matchDoc.documentID)
+                .getDocument()
+            
+            if let matchData = match.data(),
+               let userIds = matchData["users"] as? [String] {
+                // Get the ID of the other user
+                let matchedUserId = userIds.first { $0 != currentUserId } ?? ""
+                
+                // Get the matched user's data
+                let userDoc = try await db.collection("users")
+                    .document(matchedUserId)
+                    .getDocument()
+                
+                if let matchedUser = try? userDoc.data(as: User.self) {
+                    fetchedUsers.append(matchedUser)
+                }
+            }
+        }
+        
+        await MainActor.run {
+            self.matches = fetchedUsers
+        }
     }
 }

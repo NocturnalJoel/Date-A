@@ -2,6 +2,9 @@ import SwiftUI
 import PhotosUI
 
 struct SettingsView: View {
+    
+    @Environment(\.dismiss) private var dismiss
+    
     @EnvironmentObject var model: ContentModel
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
@@ -64,10 +67,20 @@ struct SettingsView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 32) {
                 // Header
-                Text("Settings")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 20)
+                HStack {
+                                    Button(action: {
+                                        dismiss()
+                                    }) {
+                                        Image(systemName: "chevron.left")
+                                            .font(.system(size: 20, weight: .medium))
+                                            .foregroundColor(.black)
+                                    }
+                                    
+                                    Text("Settings")
+                                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .padding(.top, 20)
                 
                 VStack(spacing: 28) {
                     // Photos Section
@@ -240,6 +253,7 @@ struct SettingsView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
+        .navigationBarHidden(true)
         .onAppear {
             loadCurrentUserPhotos()
             
