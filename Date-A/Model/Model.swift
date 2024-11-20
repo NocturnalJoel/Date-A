@@ -22,3 +22,17 @@ struct User: Identifiable, Codable, Equatable {
     }
 }
 
+struct Message: Identifiable, Codable {
+    let id: String
+    let senderId: String
+    let text: String
+    let timestamp: Date
+    
+    init(id: String = UUID().uuidString, senderId: String, text: String, timestamp: Date = Date()) {
+        self.id = id
+        self.senderId = senderId
+        self.text = text
+        self.timestamp = timestamp
+    }
+}
+

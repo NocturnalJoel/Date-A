@@ -25,6 +25,8 @@ class ContentModel: ObservableObject {
     
     @Published var matches: [User] = []
     
+    @Published var messages: [Message] = []
+    
     
     
     func startFetchingProfiles() {
@@ -489,5 +491,81 @@ class ContentModel: ObservableObject {
         await MainActor.run {
             self.matches = fetchedUsers
         }
+    }
+    
+    func sendMessage(to matchId: String, text: String) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        
+        let message = Message(senderId: currentUserId, text: text)
+        
+        try await db.collection("matches")
+            .document(matchId)
+            .collection("messages")
+            .document(message.id)
+            .setData([
+                "senderId": message.senderId,
+                "text": message.text,
+                "timestamp": message.timestamp
+            ])
+    }
+
+    func fetchMessages(for matchId: String) async throws {
+       print("🎬 Starting to fetch messages for matchId: \(matchId)")
+       
+       do {
+           let messages = try await db.collection("matches")
+               .document(matchId)
+               .collection("messages")
+               .order(by: "timestamp", descending: false)
+               .getDocuments()
+           
+           print("📄 Got \(messages.documents.count) documents from Firestore")
+           
+           let fetchedMessages = messages.documents.compactMap { doc -> Message? in
+               print("🔍 Processing document with ID: \(doc.documentID)")
+               print("📝 Raw document data: \(doc.data())")
+               
+               guard let senderId = doc.data()["senderId"] as? String else {
+                   print("❌ Failed to get senderId from document")
+                   return nil
+               }
+               
+               guard let text = doc.data()["text"] as? String else {
+                   print("❌ Failed to get text from document")
+                   return nil
+               }
+               
+               let timestamp: Date
+               if let firestoreTimestamp = doc.data()["timestamp"] as? Timestamp {
+                   timestamp = firestoreTimestamp.dateValue()
+                   print("✅ Successfully converted Firestore timestamp to Date")
+               } else {
+                   print("⚠️ No timestamp found, using current date")
+                   timestamp = Date()
+               }
+               
+               print("✅ Successfully created Message object for document \(doc.documentID)")
+               print("📱 Message details - senderId: \(senderId), text: \(text)")
+               
+               return Message(id: doc.documentID, senderId: senderId, text: text, timestamp: timestamp)
+           }
+           
+           print("🔄 Converted \(fetchedMessages.count) documents to Message objects")
+           
+           await MainActor.run {
+               self.messages = fetchedMessages
+               print("📱 Updated UI with \(self.messages.count) messages")
+           }
+           
+           print("✅ Fetch messages operation completed successfully")
+           
+       } catch {
+           print("❌ Error fetching messages: \(error.localizedDescription)")
+           print("❌ Full error: \(error)")
+           throw error
+       }
     }
 }
