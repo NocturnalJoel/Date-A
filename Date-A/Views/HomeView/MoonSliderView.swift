@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MoonSliderView: View {
-    @State private var selectedLevel: Int = 2 // Default to middle level (40-60)
+    @Binding var selectedLevel: Int // Default to middle level (40-60)
     
     private let moonPhases = ["🌑", "🌘", "🌗", "🌖", "🌕"]
     private let ranges = ["0-20", "20-40", "40-60", "60-80", "80-100"]
@@ -52,18 +52,7 @@ struct MoonSliderView: View {
         .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
     }
     
-    // Function to get the current range values (for future use)
-    func getCurrentRange() -> (min: Int, max: Int) {
-        let min = selectedLevel * 20
-        let max = min + 20
-        return (min, max)
-    }
 }
 
 // Preview provider
-struct MoonSliderView_Previews: PreviewProvider {
-    static var previews: some View {
-        MoonSliderView()
-            .previewLayout(.sizeThatFits)
-    }
-}
+

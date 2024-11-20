@@ -27,48 +27,175 @@ class ContentModel: ObservableObject {
     
     @Published var messages: [Message] = []
     
-    
+    @Published var moonSliderLevel: Int = 2 {
+        didSet {
+            // Clear current profiles since they might not match new filter
+            currentProfile = nil
+            nextProfile = nil
+            profileQueue.removeAll()
+            lastFetchedUserId = nil
+            
+            // Fetch new profiles with new filter
+            Task {
+                await fetchProfiles()
+            }
+        }
+    }
     
     func startFetchingProfiles() {
             Task { await fetchProfiles() }
         }
         
-        @MainActor
-        private func fetchProfiles() async {
-        guard !isLoadingProfiles else { return }
+    @MainActor
+    private func fetchProfiles() async {
+        print("🚀 Starting fetchProfiles()")
+        guard !isLoadingProfiles else {
+            print("⚠️ Already loading profiles, skipping fetch")
+            return
+        }
         isLoadingProfiles = true
+        print("✅ Set isLoadingProfiles to true")
         
         do {
-            var query = db.collection("users").limit(to: 5)
-            
-            if let currentUserId = Auth.auth().currentUser?.uid {
-                query = query.whereField("id", isNotEqualTo: currentUserId)
+            guard let currentUserId = Auth.auth().currentUser?.uid,
+                  let currentUser = self.currentUser else {
+                print("❌ Failed to get currentUserId or currentUser")
+                print("currentUserId exists: \(Auth.auth().currentUser?.uid != nil)")
+                print("currentUser exists: \(self.currentUser != nil)")
+                isLoadingProfiles = false
+                return
             }
             
-            if let lastUserId = lastFetchedUserId {
+            print("👤 Current User Info:")
+            print("ID: \(currentUserId)")
+            print("Gender Preference: \(currentUser.genderPreference.rawValue)")
+            print("Age Range: \(currentUser.minAgePreference) - \(currentUser.maxAgePreference)")
+            
+            // Get liked and disliked users
+            print("📥 Fetching disliked users...")
+            let dislikedDocs = try await db.collection("users")
+                .document(currentUserId)
+                .collection("dislikes")
+                .getDocuments()
+            
+            print("📥 Fetching liked users...")
+            let likedDocs = try await db.collection("users")
+                .document(currentUserId)
+                .collection("likes_sent")
+                .getDocuments()
+            
+            let dislikedIds = dislikedDocs.documents.map { $0.documentID }
+            let likedIds = likedDocs.documents.map { $0.documentID }
+            
+            print("📊 Filter Stats:")
+            print("Number of disliked users: \(dislikedIds.count)")
+            print("Number of liked users: \(likedIds.count)")
+            
+            // Build query with all filters
+            print("🔄 Building query with filters...")
+            var query = db.collection("users")
+                .whereField("id", isNotEqualTo: currentUserId)
+                .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
+                .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
+                .whereField("age", isGreaterThanOrEqualTo: currentUser.minAgePreference)
+                .whereField("age", isLessThanOrEqualTo: currentUser.maxAgePreference)
+                .limit(to: 15) // Increased limit since we'll filter more in memory
+            
+            if let lastUserId = self.lastFetchedUserId {
+                print("📝 Using pagination, last user ID: \(lastUserId)")
                 let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
                 query = query.start(afterDocument: lastDoc)
+            } else {
+                print("📝 First fetch, no pagination")
             }
             
-            let newProfiles = try await query.getDocuments().documents.compactMap {
-                try? $0.data(as: User.self)
+            print("🔍 Executing query...")
+            let querySnapshot = try await query.getDocuments()
+            print("📦 Raw query returned \(querySnapshot.documents.count) documents")
+            
+            // Get the current selected range from MoonSliderView
+            let selectedRange = getMoonSliderRange()
+            print("🌙 Current moon slider range: \(selectedRange.min)-\(selectedRange.max)")
+            
+            let newProfiles = try querySnapshot.documents.compactMap { doc -> User? in
+                print("\n🔄 Processing document ID: \(doc.documentID)")
+                
+                guard let user = try? doc.data(as: User.self) else {
+                    print("❌ Failed to decode user document")
+                    print("Raw document data: \(doc.data() ?? [:])")
+                    return nil
+                }
+                
+                // Calculate like ratio
+                let totalInteractions = user.timesLiked + user.timesDisliked
+                let likeRatio = totalInteractions > 0 ?
+                    (Double(user.timesLiked) / Double(totalInteractions)) * 100 :
+                    50.0 // Default to 50% if no interactions
+                
+                print("📊 User like ratio: \(likeRatio)%")
+                
+                // Check if ratio is within selected range
+                guard likeRatio >= Double(selectedRange.min) && likeRatio <= Double(selectedRange.max) else {
+                    print("❌ User filtered out - ratio outside selected range")
+                    return nil
+                }
+                
+                // Filter out liked and disliked users
+                if dislikedIds.contains(user.id) {
+                    print("❌ User was previously disliked")
+                    return nil
+                }
+                
+                if likedIds.contains(user.id) {
+                    print("❌ User was previously liked")
+                    return nil
+                }
+                
+                print("✅ User passed all filters")
+                return user
             }
             
-            lastFetchedUserId = newProfiles.last?.id
-            profileQueue.append(contentsOf: newProfiles)
+            print("\n📊 Results Summary:")
+            print("New profiles found: \(newProfiles.count)")
+            
+            self.lastFetchedUserId = newProfiles.last?.id
+            print("📝 Updated lastFetchedUserId to: \(self.lastFetchedUserId ?? "nil")")
+            
+            self.profileQueue.append(contentsOf: newProfiles)
+            print("📦 Current profile queue size: \(self.profileQueue.count)")
             
             // Set up profiles if needed - with safety checks
-            if currentProfile == nil && !profileQueue.isEmpty {
-                currentProfile = profileQueue.removeFirst()
+            if self.currentProfile == nil && !self.profileQueue.isEmpty {
+                print("🔄 Setting up initial profiles")
+                self.currentProfile = self.profileQueue.removeFirst()
+                print("✅ Set currentProfile: \(self.currentProfile?.firstName ?? "nil")")
+                
                 // Only set nextProfile if we have another profile available
-                if !profileQueue.isEmpty {
-                    nextProfile = profileQueue.removeFirst()
+                if !self.profileQueue.isEmpty {
+                    self.nextProfile = self.profileQueue.removeFirst()
+                    print("✅ Set nextProfile: \(self.nextProfile?.firstName ?? "nil")")
+                } else {
+                    print("ℹ️ No next profile available")
                 }
+            } else {
+                print("ℹ️ Profiles already set or queue empty")
+                print("currentProfile exists: \(self.currentProfile != nil)")
+                print("profileQueue empty: \(self.profileQueue.isEmpty)")
             }
             
             isLoadingProfiles = false
+            print("✅ Fetch completed successfully\n")
+            
         } catch {
-            print("Error fetching profiles: \(error)")
+            print("\n❌ Error in fetchProfiles:")
+            print("Error description: \(error.localizedDescription)")
+            print("Full error: \(error)")
+            print("Debug info:")
+            print("currentProfile exists: \(self.currentProfile != nil)")
+            print("nextProfile exists: \(self.nextProfile != nil)")
+            print("profileQueue size: \(self.profileQueue.count)")
+            print("isLoadingProfiles: \(self.isLoadingProfiles)")
+            print("lastFetchedUserId: \(self.lastFetchedUserId ?? "nil")")
             isLoadingProfiles = false
         }
     }
@@ -567,5 +694,11 @@ class ContentModel: ObservableObject {
            print("❌ Full error: \(error)")
            throw error
        }
+    }
+    
+    private func getMoonSliderRange() -> (min: Int, max: Int) {
+        let min = moonSliderLevel * 20
+        let max = min + 20
+        return (min, max)
     }
 }

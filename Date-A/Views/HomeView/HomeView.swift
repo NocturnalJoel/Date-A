@@ -21,7 +21,7 @@ struct HomeView: View {
                 NavigationBarView()
                     .environmentObject(model)
                 
-                MoonSliderView()
+                MoonSliderView(selectedLevel: $model.moonSliderLevel)
                     .environmentObject(model)
                 
                 Spacer()
