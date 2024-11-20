@@ -27,6 +27,7 @@ struct MatchesView: View {
                             .font(.system(size: 20, weight: .medium))
                             .foregroundColor(.black)
                     }
+                    .buttonStyle(.plain)
                     
                     Text("Matches")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
@@ -76,10 +77,11 @@ struct MatchesView: View {
                                         .foregroundColor(.gray)
                                         .font(.system(size: 14, weight: .medium))
                                 }
-                                .padding(16)
-                                .background(Color.gray.opacity(0.1))
+                                .padding(10)
+                                .background(Color.gray.opacity(0.3))
                                 .cornerRadius(16)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }

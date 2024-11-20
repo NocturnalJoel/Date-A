@@ -13,7 +13,7 @@ struct RangeSlider: View {
                     .frame(height: 4)
                 
                 Rectangle()
-                    .fill(Color.blue)
+                    .fill(Color.black)
                     .frame(width: (maxValue - minValue) / (range.upperBound - range.lowerBound) * geometry.size.width,
                            height: 4)
                     .offset(x: (minValue - range.lowerBound) / (range.upperBound - range.lowerBound) * geometry.size.width)

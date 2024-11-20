@@ -26,6 +26,7 @@ struct MoonSliderView: View {
                         }
                         .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.plain)
                 }
             }
             
@@ -53,6 +54,4 @@ struct MoonSliderView: View {
     }
     
 }
-
-// Preview provider
 

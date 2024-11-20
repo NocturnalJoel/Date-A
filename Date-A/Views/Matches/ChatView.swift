@@ -22,6 +22,7 @@ struct ChatView: View {
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(.black)
                 }
+                .buttonStyle(.plain)
                 
                 if let imageURL = matchedUser.pictureURLs.first {
                     AsyncImage(url: URL(string: imageURL)) { image in

@@ -174,6 +174,7 @@ struct OnboardingView: View {
                                 .background(Color.black)
                                 .cornerRadius(12)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -216,6 +217,7 @@ struct OnboardingView: View {
                 }
                 .disabled(model.isLoading)
                 .padding(.top, 8)
+                .buttonStyle(.plain)
                 
                 // Sign In Option
                 HStack(spacing: 4) {
@@ -312,6 +314,7 @@ struct OnboardingView: View {
                             .cornerRadius(16)
                     }
                     .disabled(model.isLoading)
+                    .buttonStyle(.plain)
                 }
                 .padding(24)
                 .navigationTitle("Welcome Back")

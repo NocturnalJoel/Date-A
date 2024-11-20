@@ -21,6 +21,7 @@ struct NavigationBarView: View {
                         .font(.title2)
                         .foregroundColor(.black)
                 }
+                .buttonStyle(.plain)
                 
                 Spacer()
                 
@@ -39,6 +40,7 @@ struct NavigationBarView: View {
                         .font(.title2)
                         .foregroundColor(.black)
                 }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal)
             .frame(maxWidth: .infinity)
@@ -57,15 +59,3 @@ struct NavigationBarView: View {
         }
 }
 
-// Preview provider
-struct NavigationBarView_Previews: PreviewProvider {
-    static var previews: some View {
-        NavigationView {
-            VStack {
-                NavigationBarView()
-                Spacer()
-            }
-        }
-        .previewLayout(.sizeThatFits)
-    }
-}

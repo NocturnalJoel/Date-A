@@ -75,6 +75,7 @@ struct SettingsView: View {
                                             .font(.system(size: 20, weight: .medium))
                                             .foregroundColor(.black)
                                     }
+                                    .buttonStyle(.plain)
                                     
                                     Text("Settings")
                                         .font(.system(size: 34, weight: .bold, design: .rounded))
@@ -145,6 +146,7 @@ struct SettingsView: View {
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(12)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     
@@ -185,6 +187,7 @@ struct SettingsView: View {
                         .padding(6)
                         .background(Color.gray.opacity(0.1))
                         .cornerRadius(12)
+                        .buttonStyle(.plain)
                     }
                 }
                 
@@ -229,6 +232,7 @@ struct SettingsView: View {
                     
                 }
                 .padding(.top, 8)
+                .buttonStyle(.plain)
                 
                 // Log Out Button
                 Button {
@@ -249,6 +253,7 @@ struct SettingsView: View {
                         .cornerRadius(16)
                 }
                 .padding(.top, 8)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)

@@ -28,6 +28,7 @@ struct ButtonsView: View {
                     .clipShape(Circle())
                     .shadow(radius: 3)
             }
+            .buttonStyle(.plain)
             
             // Like Button
             Button(action: {
@@ -45,6 +46,7 @@ struct ButtonsView: View {
                     .clipShape(Circle())
                     .shadow(radius: 3)
             }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
