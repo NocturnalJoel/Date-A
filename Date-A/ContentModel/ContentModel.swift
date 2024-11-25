@@ -27,20 +27,33 @@ class ContentModel: ObservableObject {
     
     @Published var messages: [Message] = []
     
+    @Published var isTransitioningProfiles = false
+    
+    @Published var nextProfileReady = false
+    
+    @Published var profileStack: [User] = []  // Will hold 5 preloaded profiles
+    
+    private let maxStackSize = 5
+
+    
     @Published var moonSliderLevel: Int = 2 {
-        didSet {
-            // Clear current profiles since they might not match new filter
-            currentProfile = nil
-            nextProfile = nil
-            profileQueue.removeAll()
-            lastFetchedUserId = nil
-            
-            // Fetch new profiles with new filter
-            Task {
-                await fetchProfiles()
+            didSet {
+                print("🌙 Moon slider level changed to: \(moonSliderLevel)")
+                // Clear current profile stack since they might not match new filter
+                Task {
+                    await MainActor.run {
+                        // Clear the stack
+                        profileStack.removeAll()
+                        // Reset pagination
+                        lastFetchedUserId = nil
+                        // Fetch new profiles with new filter
+                        Task {
+                            await fetchProfiles()
+                        }
+                    }
+                }
             }
         }
-    }
     
     func startFetchingProfiles() {
             Task { await fetchProfiles() }
@@ -48,37 +61,21 @@ class ContentModel: ObservableObject {
         
     @MainActor
     private func fetchProfiles() async {
-        print("🚀 Starting fetchProfiles()")
-        guard !isLoadingProfiles else {
-            print("⚠️ Already loading profiles, skipping fetch")
-            return
-        }
+        guard !isLoadingProfiles else { return }
         isLoadingProfiles = true
-        print("✅ Set isLoadingProfiles to true")
         
         do {
             guard let currentUserId = Auth.auth().currentUser?.uid,
                   let currentUser = self.currentUser else {
-                print("❌ Failed to get currentUserId or currentUser")
-                print("currentUserId exists: \(Auth.auth().currentUser?.uid != nil)")
-                print("currentUser exists: \(self.currentUser != nil)")
                 isLoadingProfiles = false
                 return
             }
             
-            print("👤 Current User Info:")
-            print("ID: \(currentUserId)")
-            print("Gender Preference: \(currentUser.genderPreference.rawValue)")
-            print("Age Range: \(currentUser.minAgePreference) - \(currentUser.maxAgePreference)")
-            
-            // Get liked and disliked users
-            print("📥 Fetching disliked users...")
             let dislikedDocs = try await db.collection("users")
                 .document(currentUserId)
                 .collection("dislikes")
                 .getDocuments()
             
-            print("📥 Fetching liked users...")
             let likedDocs = try await db.collection("users")
                 .document(currentUserId)
                 .collection("likes_sent")
@@ -87,126 +84,97 @@ class ContentModel: ObservableObject {
             let dislikedIds = dislikedDocs.documents.map { $0.documentID }
             let likedIds = likedDocs.documents.map { $0.documentID }
             
-            print("📊 Filter Stats:")
-            print("Number of disliked users: \(dislikedIds.count)")
-            print("Number of liked users: \(likedIds.count)")
-            
-            // Build query with all filters
-            print("🔄 Building query with filters...")
             var query = db.collection("users")
                 .whereField("id", isNotEqualTo: currentUserId)
                 .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
                 .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
                 .whereField("age", isGreaterThanOrEqualTo: currentUser.minAgePreference)
                 .whereField("age", isLessThanOrEqualTo: currentUser.maxAgePreference)
-                .limit(to: 15) // Increased limit since we'll filter more in memory
+                .limit(to: 15)
             
             if let lastUserId = self.lastFetchedUserId {
-                print("📝 Using pagination, last user ID: \(lastUserId)")
                 let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
                 query = query.start(afterDocument: lastDoc)
-            } else {
-                print("📝 First fetch, no pagination")
             }
             
-            print("🔍 Executing query...")
             let querySnapshot = try await query.getDocuments()
-            print("📦 Raw query returned \(querySnapshot.documents.count) documents")
-            
-            // Get the current selected range from MoonSliderView
             let selectedRange = getMoonSliderRange()
-            print("🌙 Current moon slider range: \(selectedRange.min)-\(selectedRange.max)")
             
             let newProfiles = try querySnapshot.documents.compactMap { doc -> User? in
-                print("\n🔄 Processing document ID: \(doc.documentID)")
+                guard let user = try? doc.data(as: User.self) else { return nil }
                 
-                guard let user = try? doc.data(as: User.self) else {
-                    print("❌ Failed to decode user document")
-                    print("Raw document data: \(doc.data() ?? [:])")
-                    return nil
-                }
-                
-                // Calculate like ratio
                 let totalInteractions = user.timesLiked + user.timesDisliked
                 let likeRatio = totalInteractions > 0 ?
                     (Double(user.timesLiked) / Double(totalInteractions)) * 100 :
-                    50.0 // Default to 50% if no interactions
+                    50.0
                 
-                print("📊 User like ratio: \(likeRatio)%")
-                
-                // Check if ratio is within selected range
                 guard likeRatio >= Double(selectedRange.min) && likeRatio <= Double(selectedRange.max) else {
-                    print("❌ User filtered out - ratio outside selected range")
                     return nil
                 }
                 
-                // Filter out liked and disliked users
-                if dislikedIds.contains(user.id) {
-                    print("❌ User was previously disliked")
+                if dislikedIds.contains(user.id) || likedIds.contains(user.id) {
                     return nil
                 }
                 
-                if likedIds.contains(user.id) {
-                    print("❌ User was previously liked")
-                    return nil
-                }
-                
-                print("✅ User passed all filters")
                 return user
             }
             
-            print("\n📊 Results Summary:")
-            print("New profiles found: \(newProfiles.count)")
+            self.lastFetchedUserId = querySnapshot.documents.last?.documentID
             
-            self.lastFetchedUserId = newProfiles.last?.id
-            print("📝 Updated lastFetchedUserId to: \(self.lastFetchedUserId ?? "nil")")
-            
-            self.profileQueue.append(contentsOf: newProfiles)
-            print("📦 Current profile queue size: \(self.profileQueue.count)")
-            
-            // Set up profiles if needed - with safety checks
-            if self.currentProfile == nil && !self.profileQueue.isEmpty {
-                print("🔄 Setting up initial profiles")
-                self.currentProfile = self.profileQueue.removeFirst()
-                print("✅ Set currentProfile: \(self.currentProfile?.firstName ?? "nil")")
-                
-                // Only set nextProfile if we have another profile available
-                if !self.profileQueue.isEmpty {
-                    self.nextProfile = self.profileQueue.removeFirst()
-                    print("✅ Set nextProfile: \(self.nextProfile?.firstName ?? "nil")")
-                } else {
-                    print("ℹ️ No next profile available")
+            let newUniqueProfiles = newProfiles.filter { newProfile in
+                !profileStack.contains { existingProfile in
+                    existingProfile.id == newProfile.id
                 }
-            } else {
-                print("ℹ️ Profiles already set or queue empty")
-                print("currentProfile exists: \(self.currentProfile != nil)")
-                print("profileQueue empty: \(self.profileQueue.isEmpty)")
+            }
+            
+            profileStack.append(contentsOf: newUniqueProfiles)
+            if profileStack.count > maxStackSize {
+                profileStack = Array(profileStack.prefix(maxStackSize))
+            }
+            
+            // Set current and next profiles
+            if currentProfile == nil && !profileStack.isEmpty {
+                currentProfile = profileStack[0]
+                if profileStack.count > 1 {
+                    nextProfile = profileStack[1]
+                }
+            }
+            
+            if profileStack.count < 3 && querySnapshot.documents.count >= 15 {
+                await fetchProfiles()
             }
             
             isLoadingProfiles = false
-            print("✅ Fetch completed successfully\n")
             
         } catch {
-            print("\n❌ Error in fetchProfiles:")
-            print("Error description: \(error.localizedDescription)")
-            print("Full error: \(error)")
-            print("Debug info:")
-            print("currentProfile exists: \(self.currentProfile != nil)")
-            print("nextProfile exists: \(self.nextProfile != nil)")
-            print("profileQueue size: \(self.profileQueue.count)")
-            print("isLoadingProfiles: \(self.isLoadingProfiles)")
-            print("lastFetchedUserId: \(self.lastFetchedUserId ?? "nil")")
             isLoadingProfiles = false
         }
     }
         
+    @MainActor
         func moveToNextProfile() {
-            currentProfile = nextProfile
-            nextProfile = profileQueue.isEmpty ? nil : profileQueue.removeFirst()
+            // Remove the top profile
+            if !profileStack.isEmpty {
+                profileStack.removeFirst()
+            }
             
-            // Fetch more if queue is getting low
-            if profileQueue.count < 2 {
-                Task { await fetchProfiles() }
+            // Update current and next
+            if profileStack.count >= 2 {
+                currentProfile = profileStack[0]
+                nextProfile = profileStack[1]
+            } else if profileStack.count == 1 {
+                currentProfile = profileStack[0]
+                nextProfile = nil
+            } else {
+                currentProfile = nil
+                nextProfile = nil
+            }
+            
+            // Fetch more if stack is getting low
+            if profileStack.count < 3 {
+                Task {
+                    await fetchProfiles()
+                }
             }
         }
     
@@ -473,7 +441,10 @@ class ContentModel: ObservableObject {
             }
         }
     
+    // In ContentModel
     func likeUser(_ likedUser: User) async throws {
+        let likedUserId = likedUser.id
+        
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
         }
@@ -483,42 +454,41 @@ class ContentModel: ObservableObject {
         
         // Add to current user's likes_sent
         let likeSentRef = db.collection("users").document(currentUserId)
-            .collection("likes_sent").document(likedUser.id)
-        batch.setData([:], forDocument: likeSentRef)  // Empty document, just need the ID
+            .collection("likes_sent").document(likedUserId)
+        batch.setData([:], forDocument: likeSentRef)
         
         // Add to other user's likes_received
-        let likeReceivedRef = db.collection("users").document(likedUser.id)
+        let likeReceivedRef = db.collection("users").document(likedUserId)
             .collection("likes_received").document(currentUserId)
-        batch.setData([:], forDocument: likeReceivedRef)  // Empty document, just need the ID
+        batch.setData([:], forDocument: likeReceivedRef)
         
         // Increment timesLiked for the liked user
-        let userRef = db.collection("users").document(likedUser.id)
-            batch.updateData(["timesLiked": FieldValue.increment(Int64(1))], forDocument: userRef)
+        let userRef = db.collection("users").document(likedUserId)
+        batch.updateData(["timesLiked": FieldValue.increment(Int64(1))], forDocument: userRef)
         
         // Commit the batch
         try await batch.commit()
         
         // Check for match
         let otherUserLikes = try await db.collection("users")
-            .document(likedUser.id)
+            .document(likedUserId)
             .collection("likes_sent")
             .document(currentUserId)
             .getDocument()
         
         if otherUserLikes.exists {
-            // It's a match! Handle match creation here
-            try await createMatch(currentUserId: currentUserId, matchedUserId: likedUser.id)
-            print("It's a match!")
-            // We can implement match creation later
+            try await createMatch(currentUserId: currentUserId, matchedUserId: likedUserId)
         }
         
-        // Move to next profile
+        // Update UI after successful database operation
         await MainActor.run {
             moveToNextProfile()
         }
     }
-    
+
     func dislikeUser(_ dislikedUser: User) async throws {
+        let dislikedUserId = dislikedUser.id
+        
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
         }
@@ -526,30 +496,28 @@ class ContentModel: ObservableObject {
         // Create batch write
         let batch = db.batch()
         
-        // Add to current user's dislikes subcollection
+        // Add to current user's dislikes
         let dislikeRef = db.collection("users").document(currentUserId)
-            .collection("dislikes").document(dislikedUser.id)
+            .collection("dislikes").document(dislikedUserId)
         batch.setData([:], forDocument: dislikeRef)
         
         // Increment timesDisliked for the disliked user
-        let userRef = db.collection("users").document(dislikedUser.id)
+        let userRef = db.collection("users").document(dislikedUserId)
         batch.updateData(["timesDisliked": FieldValue.increment(Int64(1))], forDocument: userRef)
         
         // Check if the disliked user had previously liked the current user
         let previousLikeRef = db.collection("users").document(currentUserId)
-            .collection("likes_received").document(dislikedUser.id)
+            .collection("likes_received").document(dislikedUserId)
         
         let previousLikeDoc = try await previousLikeRef.getDocument()
-        
         if previousLikeDoc.exists {
-            // Remove from current user's likes_received
             batch.deleteDocument(previousLikeRef)
         }
         
         // Commit the batch
         try await batch.commit()
         
-        // Move to next profile
+        // Update UI after successful database operation
         await MainActor.run {
             moveToNextProfile()
         }

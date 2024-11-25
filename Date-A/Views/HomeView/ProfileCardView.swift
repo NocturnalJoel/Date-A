@@ -3,26 +3,34 @@ import SwiftUI
 struct ProfileCardView: View {
     let user: User
     @State private var currentIndex = 0
+    @State private var allImagesLoaded = false
+    @EnvironmentObject var model: ContentModel
     
     var body: some View {
         ZStack {
             // Image carousel
             TabView(selection: $currentIndex) {
-                ForEach(Array(user.pictureURLs.enumerated()), id: \.element) { index, url in
+                ForEach(Array(user.pictureURLs.enumerated()), id: \.1) { index, url in
                     AsyncImage(url: URL(string: url)) { phase in
                         switch phase {
                         case .success(let image):
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
+                                .onAppear {
+                                    // If this is the next profile and the last image loaded
+                                    if user.id == model.nextProfile?.id && index == user.pictureURLs.count - 1 {
+                                        model.nextProfileReady = true
+                                    }
+                                }
                         case .failure(_):
                             Image(systemName: "person.fill")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .padding()
-                                .foregroundColor(.gray)
+                                .foregroundColor(.orange)
                         case .empty:
-                            ProgressView()
+                            Color.clear
                         @unknown default:
                             EmptyView()
                         }
@@ -30,7 +38,7 @@ struct ProfileCardView: View {
                     .tag(index)
                 }
             }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Hide default indicators
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             
             // Overlay gradient for better text visibility
             VStack {
@@ -47,7 +55,7 @@ struct ProfileCardView: View {
                 )
                 .frame(height: 100)
             }
-            .allowsHitTesting(false) // Make sure this doesn't interfere with swipes
+            .allowsHitTesting(false)
             
             // Bottom overlay with user info and page indicators
             VStack {
@@ -79,12 +87,10 @@ struct ProfileCardView: View {
                 }
                 .padding()
             }
-            .allowsHitTesting(false) // Make sure this doesn't interfere with swipes
+            .allowsHitTesting(false)
         }
         .frame(width: 400, height: 500)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(radius: 5)
     }
 }
-
-// Preview provider for development

@@ -27,11 +27,17 @@ struct HomeView: View {
                 Spacer()
                 //
                 ZStack {
-                                    if model.isLoadingProfiles && model.currentProfile == nil {
-                                        ProgressView()
-                                        
-                                    } else if model.currentProfile == nil && model.nextProfile == nil {
-                                            // No profiles available state
+                                    if !model.profileStack.isEmpty {
+                                        // Stack all preloaded profiles
+                                        ForEach(Array(model.profileStack.enumerated()), id: \.1.id) { index, profile in
+                                            ProfileCardView(user: profile)
+                                                .zIndex(Double(model.profileStack.count - index))  // Stack from bottom up
+                                        }
+                                    } else {
+                                        // Only show this if we truly have no profiles
+                                        if model.isLoadingProfiles {
+                                            ProgressView()
+                                        } else {
                                             VStack(spacing: 16) {
                                                 Image(systemName: "person.slash")
                                                     .font(.system(size: 50))
@@ -47,21 +53,14 @@ struct HomeView: View {
                                                     .foregroundColor(.gray.opacity(0.8))
                                             }
                                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                            .background(Color.white.opacity(0.9))
+                                            .background(Color(.systemBackground))
                                             .clipShape(RoundedRectangle(cornerRadius: 20))
                                             .shadow(radius: 5)
-                                        
-                                    } else {
-                                        if let nextProfile = model.nextProfile {
-                                            ProfileCardView(user: nextProfile)
-                                        }
-                                        if let currentProfile = model.currentProfile {
-                                            ProfileCardView(user: currentProfile)
-                                                .offset(x: offset)
-                                                .zIndex(1)
+                                            .padding()
                                         }
                                     }
                                 }
+                                .frame(height: 500)
                 //
                 Spacer()
                 

@@ -7,18 +7,24 @@
 import SwiftUI
 
 struct ButtonsView: View {
-
     @EnvironmentObject var model: ContentModel
+    @State private var likeError: Error?
+    @State private var showError = false
 
     var body: some View {
         HStack(spacing: 40) {
             // Dislike Button
             Button(action: {
-                if let currentProfile = model.currentProfile {
-                        Task {
-                            try? await model.dislikeUser(currentProfile)
-                        }
+                guard let currentProfile = model.currentProfile else { return }
+                Task {
+                    do {
+                        try await model.dislikeUser(currentProfile)
+                    } catch {
+                        print("Dislike error: \(error)")
+                        likeError = error
+                        showError = true
                     }
+                }
             }) {
                 Image(systemName: "xmark")
                     .font(.title)
@@ -32,11 +38,16 @@ struct ButtonsView: View {
             
             // Like Button
             Button(action: {
-                if let currentProfile = model.currentProfile {
-                        Task {
-                            try? await model.likeUser(currentProfile)
-                        }
+                guard let currentProfile = model.currentProfile else { return }
+                Task {
+                    do {
+                        try await model.likeUser(currentProfile)
+                    } catch {
+                        print("Like error: \(error)")
+                        likeError = error
+                        showError = true
                     }
+                }
             }) {
                 Image(systemName: "heart.fill")
                     .font(.title)
@@ -52,6 +63,11 @@ struct ButtonsView: View {
         .frame(maxWidth: .infinity)
         .background(Color.white)
         .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: -2)
+        .alert("Error", isPresented: $showError) {
+            Button("OK") { showError = false }
+        } message: {
+            Text(likeError?.localizedDescription ?? "Unknown error occurred")
+        }
     }
 }
 

@@ -20,27 +20,25 @@ struct Date_AApp: App {
         FirebaseApp.configure()
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         model.permissionGranted = (status == .authorized || status == .limited)
-   
-      
     }
     
     var body: some Scene {
         WindowGroup {
-                    NavigationView {  // Add this
-                        Group {
-                            if let user = model.currentUser {
-                                HomeView()
-                                    .environmentObject(model)
-                            } else {
-                                OnboardingView()
-                                    .environmentObject(model)
-                            }
-                        }
+            NavigationView {  // Add this
+                Group {
+                    if let user = model.currentUser {
+                        HomeView()
+                            .environmentObject(model)
+                    } else {
+                        OnboardingView()
+                            .environmentObject(model)
                     }
-                    .onAppear {
-                                    model.checkAuthStatus()
-                                }
                 }
+            }
+            .onAppear {
+                model.checkAuthStatus()
+            }
+        }
     }
-
+    
 }

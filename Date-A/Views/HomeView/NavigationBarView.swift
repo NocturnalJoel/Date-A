@@ -26,9 +26,8 @@ struct NavigationBarView: View {
                 Spacer()
                 
                 // App Logo
-                Image(systemName: "heart.fill")
-                    .font(.title)
-                    .foregroundColor(.black)
+                Text("Date-A")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
                 
                 Spacer()
                 
