@@ -15,16 +15,18 @@ struct ButtonsView: View {
         HStack(spacing: 40) {
             // Dislike Button
             Button(action: {
-                guard let currentProfile = model.currentProfile else { return }
-                Task {
-                    do {
-                        try await model.dislikeUser(currentProfile)
-                    } catch {
-                        print("Dislike error: \(error)")
-                        likeError = error
-                        showError = true
-                    }
-                }
+                guard !model.profileStack.isEmpty else { return }
+                                let topProfile = model.profileStack[0]
+                                
+                                Task {
+                                    do {
+                                        try await model.dislikeUser(topProfile)
+                                    } catch {
+                                        print("Dislike error: \(error)")
+                                        likeError = error
+                                        showError = true
+                                    }
+                                }
             }) {
                 Image(systemName: "xmark")
                     .font(.title)
@@ -38,16 +40,18 @@ struct ButtonsView: View {
             
             // Like Button
             Button(action: {
-                guard let currentProfile = model.currentProfile else { return }
-                Task {
-                    do {
-                        try await model.likeUser(currentProfile)
-                    } catch {
-                        print("Like error: \(error)")
-                        likeError = error
-                        showError = true
-                    }
-                }
+                guard !model.profileStack.isEmpty else { return }
+                                let topProfile = model.profileStack[0]
+                                
+                                Task {
+                                    do {
+                                        try await model.likeUser(topProfile)
+                                    } catch {
+                                        print("Like error: \(error)")
+                                        likeError = error
+                                        showError = true
+                                    }
+                                }
             }) {
                 Image(systemName: "heart.fill")
                     .font(.title)
@@ -70,4 +74,3 @@ struct ButtonsView: View {
         }
     }
 }
-

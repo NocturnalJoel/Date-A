@@ -24,7 +24,11 @@ struct Date_AApp: App {
     
     var body: some Scene {
         WindowGroup {
-            NavigationView {  // Add this
+            
+           
+            NavigationView {
+                
+                // Add this
                 Group {
                     if let user = model.currentUser {
                         HomeView()
@@ -38,6 +42,8 @@ struct Date_AApp: App {
             .onAppear {
                 model.checkAuthStatus()
             }
+            
+            
         }
     }
     

@@ -3,7 +3,7 @@ import SwiftUI
 struct ProfileCardView: View {
     let user: User
     @State private var currentIndex = 0
-    @State private var allImagesLoaded = false
+    
     @EnvironmentObject var model: ContentModel
     
     var body: some View {
@@ -17,12 +17,7 @@ struct ProfileCardView: View {
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .onAppear {
-                                    // If this is the next profile and the last image loaded
-                                    if user.id == model.nextProfile?.id && index == user.pictureURLs.count - 1 {
-                                        model.nextProfileReady = true
-                                    }
-                                }
+                                
                         case .failure(_):
                             Image(systemName: "person.fill")
                                 .resizable()
@@ -93,4 +88,4 @@ struct ProfileCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(radius: 5)
     }
-}
+}//

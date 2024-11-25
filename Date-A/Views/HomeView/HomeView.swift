@@ -1,4 +1,3 @@
-//
 //  HomeView.swift
 //  Date-A
 //
@@ -27,12 +26,11 @@ struct HomeView: View {
                 Spacer()
                 //
                 ZStack {
-                                    if !model.profileStack.isEmpty {
-                                        // Stack all preloaded profiles
-                                        ForEach(Array(model.profileStack.enumerated()), id: \.1.id) { index, profile in
-                                            ProfileCardView(user: profile)
-                                                .zIndex(Double(model.profileStack.count - index))  // Stack from bottom up
-                                        }
+                    if !model.profileStack.isEmpty {
+                                            // Show all profiles in reverse order so index 0 appears on top
+                                            ForEach(Array(model.profileStack.enumerated().reversed()), id: \.element.id) { index, user in
+                                                ProfileCardView(user: user)
+                                            }
                                     } else {
                                         // Only show this if we truly have no profiles
                                         if model.isLoadingProfiles {
@@ -73,8 +71,4 @@ struct HomeView: View {
             //
         }
     }
-}
-
-#Preview {
-    HomeView()
 }

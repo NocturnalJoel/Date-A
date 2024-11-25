@@ -3,7 +3,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import FirebaseStorage
 import Photos
-import SwiftUI 
+import SwiftUI
 
 class ContentModel: ObservableObject {
     @AppStorage("isLoggedIn") var isLoggedIn = false
@@ -33,7 +33,9 @@ class ContentModel: ObservableObject {
     
     @Published var profileStack: [User] = []  // Will hold 5 preloaded profiles
     
-    private let maxStackSize = 5
+    private let stackSize = 10
+    
+    @Published var currentProfileIndex: Int = 0
 
     
     @Published var moonSliderLevel: Int = 2 {
@@ -60,118 +62,88 @@ class ContentModel: ObservableObject {
         }
         
     @MainActor
-    private func fetchProfiles() async {
-        guard !isLoadingProfiles else { return }
-        isLoadingProfiles = true
-        
-        do {
-            guard let currentUserId = Auth.auth().currentUser?.uid,
-                  let currentUser = self.currentUser else {
-                isLoadingProfiles = false
-                return
-            }
+        private func fetchProfiles() async {
+            guard !isLoadingProfiles else { return }
+            isLoadingProfiles = true
             
-            let dislikedDocs = try await db.collection("users")
-                .document(currentUserId)
-                .collection("dislikes")
-                .getDocuments()
-            
-            let likedDocs = try await db.collection("users")
-                .document(currentUserId)
-                .collection("likes_sent")
-                .getDocuments()
-            
-            let dislikedIds = dislikedDocs.documents.map { $0.documentID }
-            let likedIds = likedDocs.documents.map { $0.documentID }
-            
-            var query = db.collection("users")
-                .whereField("id", isNotEqualTo: currentUserId)
-                .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
-                .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
-                .whereField("age", isGreaterThanOrEqualTo: currentUser.minAgePreference)
-                .whereField("age", isLessThanOrEqualTo: currentUser.maxAgePreference)
-                .limit(to: 15)
-            
-            if let lastUserId = self.lastFetchedUserId {
-                let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
-                query = query.start(afterDocument: lastDoc)
-            }
-            
-            let querySnapshot = try await query.getDocuments()
-            let selectedRange = getMoonSliderRange()
-            
-            let newProfiles = try querySnapshot.documents.compactMap { doc -> User? in
-                guard let user = try? doc.data(as: User.self) else { return nil }
-                
-                let totalInteractions = user.timesLiked + user.timesDisliked
-                let likeRatio = totalInteractions > 0 ?
-                    (Double(user.timesLiked) / Double(totalInteractions)) * 100 :
-                    50.0
-                
-                guard likeRatio >= Double(selectedRange.min) && likeRatio <= Double(selectedRange.max) else {
-                    return nil
+            do {
+                guard let currentUserId = Auth.auth().currentUser?.uid,
+                      let currentUser = self.currentUser else {
+                    isLoadingProfiles = false
+                    return
                 }
                 
-                if dislikedIds.contains(user.id) || likedIds.contains(user.id) {
-                    return nil
+                let dislikedDocs = try await db.collection("users")
+                    .document(currentUserId)
+                    .collection("dislikes")
+                    .getDocuments()
+                
+                let likedDocs = try await db.collection("users")
+                    .document(currentUserId)
+                    .collection("likes_sent")
+                    .getDocuments()
+                
+                let dislikedIds = dislikedDocs.documents.map { $0.documentID }
+                let likedIds = likedDocs.documents.map { $0.documentID }
+                
+                var query = db.collection("users")
+                    .whereField("id", isNotEqualTo: currentUserId)
+                    .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
+                    .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
+                    .whereField("age", isGreaterThanOrEqualTo: currentUser.minAgePreference)
+                    .whereField("age", isLessThanOrEqualTo: currentUser.maxAgePreference)
+                    .limit(to: stackSize)
+                
+                if let lastUserId = self.lastFetchedUserId {
+                    let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
+                    query = query.start(afterDocument: lastDoc)
                 }
                 
-                return user
-            }
-            
-            self.lastFetchedUserId = querySnapshot.documents.last?.documentID
-            
-            let newUniqueProfiles = newProfiles.filter { newProfile in
-                !profileStack.contains { existingProfile in
-                    existingProfile.id == newProfile.id
+                let querySnapshot = try await query.getDocuments()
+                let selectedRange = getMoonSliderRange()
+                
+                let newProfiles = try querySnapshot.documents.compactMap { doc -> User? in
+                    guard let user = try? doc.data(as: User.self) else { return nil }
+                    
+                    let totalInteractions = user.timesLiked + user.timesDisliked
+                    let likeRatio = totalInteractions > 0 ?
+                        (Double(user.timesLiked) / Double(totalInteractions)) * 100 :
+                        50.0
+                    
+                    guard likeRatio >= Double(selectedRange.min) && likeRatio <= Double(selectedRange.max) else {
+                        return nil
+                    }
+                    
+                    if dislikedIds.contains(user.id) || likedIds.contains(user.id) {
+                        return nil
+                    }
+                    
+                    return user
+                }
+                
+                self.lastFetchedUserId = querySnapshot.documents.last?.documentID
+                
+                await MainActor.run {
+                    self.profileStack = newProfiles
+                    self.currentProfileIndex = 0
+                    self.isLoadingProfiles = false
+                }
+                
+            } catch {
+                await MainActor.run {
+                    self.isLoadingProfiles = false
                 }
             }
-            
-            profileStack.append(contentsOf: newUniqueProfiles)
-            if profileStack.count > maxStackSize {
-                profileStack = Array(profileStack.prefix(maxStackSize))
-            }
-            
-            // Set current and next profiles
-            if currentProfile == nil && !profileStack.isEmpty {
-                currentProfile = profileStack[0]
-                if profileStack.count > 1 {
-                    nextProfile = profileStack[1]
-                }
-            }
-            
-            if profileStack.count < 3 && querySnapshot.documents.count >= 15 {
-                await fetchProfiles()
-            }
-            
-            isLoadingProfiles = false
-            
-        } catch {
-            isLoadingProfiles = false
         }
-    }
         
-    @MainActor
+        @MainActor
         func moveToNextProfile() {
-            // Remove the top profile
-            if !profileStack.isEmpty {
-                profileStack.removeFirst()
-            }
+            currentProfileIndex += 1
             
-            // Update current and next
-            if profileStack.count >= 2 {
-                currentProfile = profileStack[0]
-                nextProfile = profileStack[1]
-            } else if profileStack.count == 1 {
-                currentProfile = profileStack[0]
-                nextProfile = nil
-            } else {
-                currentProfile = nil
-                nextProfile = nil
-            }
-            
-            // Fetch more if stack is getting low
-            if profileStack.count < 3 {
+            // If we've reached the end of the stack, reset and fetch new profiles
+            if currentProfileIndex >= profileStack.count {
+                profileStack = []
+                currentProfileIndex = 0
                 Task {
                     await fetchProfiles()
                 }
@@ -442,6 +414,7 @@ class ContentModel: ObservableObject {
         }
     
     // In ContentModel
+    // In ContentModel
     func likeUser(_ likedUser: User) async throws {
         let likedUserId = likedUser.id
         
@@ -482,7 +455,17 @@ class ContentModel: ObservableObject {
         
         // Update UI after successful database operation
         await MainActor.run {
-            moveToNextProfile()
+            // Remove the first profile from the stack
+            if !profileStack.isEmpty {
+                profileStack.removeFirst()
+            }
+            
+            // If stack is empty, fetch new profiles
+            if profileStack.isEmpty {
+                Task {
+                    await fetchProfiles()
+                }
+            }
         }
     }
 
@@ -519,7 +502,17 @@ class ContentModel: ObservableObject {
         
         // Update UI after successful database operation
         await MainActor.run {
-            moveToNextProfile()
+            // Remove the first profile from the stack
+            if !profileStack.isEmpty {
+                profileStack.removeFirst()
+            }
+            
+            // If stack is empty, fetch new profiles
+            if profileStack.isEmpty {
+                Task {
+                    await fetchProfiles()
+                }
+            }
         }
     }
     
