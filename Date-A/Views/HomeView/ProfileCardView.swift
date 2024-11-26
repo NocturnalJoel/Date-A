@@ -6,6 +6,7 @@ struct ProfileCardView: View {
     
     @EnvironmentObject var model: ContentModel
     
+    
     var body: some View {
         ZStack {
             // Image carousel

@@ -9,8 +9,7 @@ struct HomeView: View {
     
     @EnvironmentObject var model: ContentModel
     
-    @State private var offset: CGFloat = 0
-
+    
     // Sample user for preview
 
     
@@ -27,11 +26,16 @@ struct HomeView: View {
                 //
                 ZStack {
                     if !model.profileStack.isEmpty {
-                                            // Show all profiles in reverse order so index 0 appears on top
-                                            ForEach(Array(model.profileStack.enumerated().reversed()), id: \.element.id) { index, user in
-                                                ProfileCardView(user: user)
-                                            }
-                                    } else {
+                        // Show background cards without animation
+                        ForEach(Array(model.profileStack.enumerated().reversed()), id: \.element.id) { _, user in
+                                                                           ProfileCardView(
+                                                                               user: user // Stack always stays centered
+                                                                           )
+                                                                       }
+                                                                       
+                                                                     
+
+                    } else {
                                         // Only show this if we truly have no profiles
                                         if model.isLoadingProfiles {
                                             ProgressView()

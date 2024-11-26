@@ -1,9 +1,3 @@
-//
-//  ButtonsView.swift
-//  Date-A
-//
-//  Created by Joël Lacoste-Therrien on 2024-11-10.
-//
 import SwiftUI
 
 struct ButtonsView: View {
