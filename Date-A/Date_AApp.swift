@@ -34,7 +34,7 @@ struct Date_AApp: App {
                         HomeView()
                             .environmentObject(model)
                     } else {
-                        OnboardingView()
+                        FirstView()
                             .environmentObject(model)
                     }
                 }

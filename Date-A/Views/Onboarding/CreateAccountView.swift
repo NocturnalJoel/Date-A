@@ -1,10 +1,22 @@
+//
+//  CreateAccountView.swift
+//  Date-A
+//
+//  Created by Joël Lacoste-Therrien on 2024-12-01.
+//
+
 import SwiftUI
 import PhotosUI
+import Firebase
+import FirebaseStorage
+import FirebaseAuth
 
-struct OnboardingView: View {
+struct CreateAccountView: View {
     @EnvironmentObject var model: ContentModel
-    @State private var isSignInSheetPresented = false
+    @Environment(\.dismiss) var dismiss
     @State private var showPhotoPermissionAlert = false
+    @State private var progressValue: CGFloat = 0
+    @State private var showProgress = false
     
     // Create Account states
     @State private var firstName = ""
@@ -16,24 +28,71 @@ struct OnboardingView: View {
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
     
+    // MARK: - Subviews
+    private var headerView: some View {
+        HStack {
+            Button(action: {
+                dismiss()
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(.black)
+            }
+            .buttonStyle(.plain)
+            
+            Text("Create Profile")
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.top, 20)
+    }
     
-    // Sign In states
-    @State private var signInEmail = ""
-    @State private var signInPassword = ""
+    private var createAccountButton: some View {
+        VStack(spacing: 16) {
+            Button {
+                handleCreateAccount()
+            } label: {
+                Text("Create Account")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.black)
+                    .cornerRadius(16)
+            }
+            .disabled(model.isLoading)
+            .buttonStyle(.plain)
+            
+            if showProgress {
+                progressView
+            }
+        }
+        .padding(.top, 8)
+    }
     
+    private var progressView: some View {
+        VStack(spacing: 8) {
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(Color.black)
+                    .frame(width: geometry.size.width * progressValue, height: 2)
+                    .animation(.linear(duration: 2), value: progressValue)
+            }
+            .frame(height: 2)
+            
+            Text("Creating your account...")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.gray)
+        }
+    }
+    
+    // MARK: - Main View
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 32) {
-                // Header
-                Text("Create Profile")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 20)
+                headerView
                 
                 VStack(spacing: 28) {
-                    // Photos Section First
-                    
-                    
                     // Basic Information
                     VStack(alignment: .leading, spacing: 20) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -117,6 +176,7 @@ struct OnboardingView: View {
                         }
                     }
                     
+                    // Profile Photos Section
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Profile Photos")
                             .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -151,7 +211,7 @@ struct OnboardingView: View {
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 50)
-                                .background(Color.black)
+                                .background(Color.gray)
                                 .cornerRadius(12)
                             }
                         } else {
@@ -171,7 +231,7 @@ struct OnboardingView: View {
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 50)
-                                .background(Color.black)
+                                .background(Color.gray)
                                 .cornerRadius(12)
                             }
                             .buttonStyle(.plain)
@@ -179,58 +239,7 @@ struct OnboardingView: View {
                     }
                 }
                 
-                // Create Account Button
-                Button {
-                    guard let ageInt = Int(age), ageInt >= 18 else {
-                        model.errorMessage = "Invalid age. Must be 18 or older."
-                        return
-                    }
-                    
-                    guard !selectedImages.isEmpty else {
-                        model.errorMessage = "Please select at least one photo"
-                        return
-                    }
-                    
-                    Task {
-                        do {
-                            try await model.createAccount(
-                                firstName: firstName,
-                                age: ageInt,
-                                gender: selectedGender,
-                                genderPreference: selectedPreference,
-                                email: createEmail,
-                                password: createPassword,
-                                images: selectedImages
-                            )
-                        } catch {
-                            // Error is handled in ContentModel
-                        }
-                    }
-                } label: {
-                    Text("Create Account")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color.black)
-                        .cornerRadius(16)
-                }
-                .disabled(model.isLoading)
-                .padding(.top, 8)
-                .buttonStyle(.plain)
-                
-                // Sign In Option
-                HStack(spacing: 4) {
-                    Text("Already have an account?")
-                        .foregroundColor(.gray)
-                    Button("Sign In") {
-                        isSignInSheetPresented = true
-                    }
-                    .foregroundColor(.black)
-                    .fontWeight(.medium)
-                }
-                .font(.system(size: 15))
-                .padding(.top, 8)
+                createAccountButton
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
@@ -244,6 +253,12 @@ struct OnboardingView: View {
                         selectedImages.append(image)
                     }
                 }
+            }
+        }
+        .onChange(of: model.isLoading) { isLoading in
+            if !isLoading {
+                showProgress = false
+                progressValue = 0
             }
         }
         .alert("Photo Access Required", isPresented: $showPhotoPermissionAlert) {
@@ -263,62 +278,39 @@ struct OnboardingView: View {
         } message: {
             Text(model.errorMessage)
         }
-        .sheet(isPresented: $isSignInSheetPresented) {
-            NavigationView {
-                VStack(spacing: 24) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Email")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(.gray)
-                            TextField("", text: $signInEmail)
-                                .font(.system(size: 17))
-                                .keyboardType(.emailAddress)
-                                .autocapitalization(.none)
-                                .padding()
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(12)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Password")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(.gray)
-                            SecureField("", text: $signInPassword)
-                                .font(.system(size: 17))
-                                .padding()
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(12)
-                        }
-                    }
-                    
-                    Button {
-                        Task {
-                            do {
-                                try await model.signIn(
-                                    email: signInEmail,
-                                    password: signInPassword
-                                )
-                                isSignInSheetPresented = false
-                            } catch {
-                                // Error is handled in ContentModel
-                            }
-                        }
-                    } label: {
-                        Text("Sign In")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(Color.black)
-                            .cornerRadius(16)
-                    }
-                    .disabled(model.isLoading)
-                    .buttonStyle(.plain)
-                }
-                .padding(24)
-                .navigationTitle("Welcome Back")
-                .navigationBarTitleDisplayMode(.inline)
+    }
+    
+    // MARK: - Helper Functions
+    private func handleCreateAccount() {
+        guard let ageInt = Int(age), ageInt >= 18 else {
+            model.errorMessage = "Invalid age. Must be 18 or older."
+            return
+        }
+        
+        guard !selectedImages.isEmpty else {
+            model.errorMessage = "Please select at least one photo"
+            return
+        }
+        
+        showProgress = true
+        withAnimation(.linear(duration: 2)) {
+            progressValue = 1.0
+        }
+        
+        Task {
+            do {
+                try await model.createAccount(
+                    firstName: firstName,
+                    age: ageInt,
+                    gender: selectedGender,
+                    genderPreference: selectedPreference,
+                    email: createEmail,
+                    password: createPassword,
+                    images: selectedImages
+                )
+            } catch {
+                showProgress = false
+                progressValue = 0
             }
         }
     }

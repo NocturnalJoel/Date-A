@@ -127,7 +127,7 @@ struct SettingsView: View {
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 50)
-                                    .background(Color.black)
+                                    .background(Color.gray)
                                     .cornerRadius(12)
                                 }
                             } else {
@@ -147,7 +147,7 @@ struct SettingsView: View {
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 50)
-                                    .background(Color.black)
+                                    .background(Color.gray)
                                     .cornerRadius(12)
                                 }
                                 .buttonStyle(.plain)
@@ -246,7 +246,7 @@ struct SettingsView: View {
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 56)
-                                .background(Color.blue)
+                                .background(Color.black)
                                 .cornerRadius(16)
                         }
                     
@@ -312,9 +312,12 @@ struct SettingsView: View {
     }
     
     private func calculateRatio() -> Int {
-        let total = model.currentUser!.timesLiked + model.currentUser!.timesDisliked
+        guard let user = model.currentUser else { return 0 }
+        
+        let total = user.timesLiked + user.timesDisliked
         guard total > 0 else { return 0 }
-        return Int((Double(model.currentUser!.timesLiked) / Double(total)) * 100)
+        
+        return Int((Double(user.timesLiked) / Double(total)) * 100)
     }
 }
 
