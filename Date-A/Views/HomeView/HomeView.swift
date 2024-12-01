@@ -41,16 +41,16 @@ struct HomeView: View {
                                             ProgressView()
                                         } else {
                                             VStack(spacing: 16) {
-                                                Image(systemName: "person.slash")
-                                                    .font(.system(size: 50))
-                                                    .foregroundColor(.gray)
+                                                Text("🌌")
+                                                    .font(.system(size: 150, weight: .bold))
+                                                    
                                                 
-                                                Text("No More Profiles Available")
+                                                Text("The Sky Is Empty Tonight")
                                                     .font(.title3)
                                                     .fontWeight(.medium)
                                                     .foregroundColor(.gray)
                                                 
-                                                Text("Check back later for new matches")
+                                                Text("Change your filters to see more profiles")
                                                     .font(.subheadline)
                                                     .foregroundColor(.gray.opacity(0.8))
                                             }

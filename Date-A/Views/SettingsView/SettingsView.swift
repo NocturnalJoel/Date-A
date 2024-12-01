@@ -83,18 +83,22 @@ struct SettingsView: View {
                                 }
                                 .padding(.top, 20)
                 
-                VStack(spacing: 28) {
-                    // Photos Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Profile Photos")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundColor(.gray)
-                        
-                        if isLoading {
+                    VStack(spacing: 28) {
+                        // Photos Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Profile Photos")
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                .foregroundColor(.gray)
+                            
+                         /*   if isLoading {
                                 ProgressView()
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 160)
-                            } else if model.permissionGranted && !selectedImages.isEmpty {
+                            } else
+                            
+                            */
+                            
+                            if model.permissionGranted && !selectedImages.isEmpty {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 12) {
                                         ForEach(selectedImages.indices, id: \.self) { index in
@@ -108,88 +112,104 @@ struct SettingsView: View {
                                 }
                                 .frame(height: 160)
                             }
-                        
-                        if model.permissionGranted {
-                            PhotosPicker(
-                                selection: $selectedItems,
-                                maxSelectionCount: 6,
-                                matching: .images
-                            ) {
-                                HStack {
-                                    Image(systemName: "photo.on.rectangle.angled")
-                                    Text(selectedImages.isEmpty ? "Add Photos" : "Edit Photos")
-                                }
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 50)
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(12)
-                            }
-                        } else {
-                            Button {
-                                Task {
-                                    let granted = await model.requestPermission()
-                                    if !granted {
-                                        showPhotoPermissionAlert = true
+                            
+                            if model.permissionGranted {
+                                PhotosPicker(
+                                    selection: $selectedItems,
+                                    maxSelectionCount: 6,
+                                    matching: .images
+                                ) {
+                                    HStack {
+                                        Image(systemName: "photo.on.rectangle.angled")
+                                        Text(selectedImages.isEmpty ? "Add Photos" : "Edit Photos")
                                     }
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .background(Color.black)
+                                    .cornerRadius(12)
                                 }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "photo.on.rectangle.angled")
-                                    Text("Add Photos")
+                            } else {
+                                Button {
+                                    Task {
+                                        let granted = await model.requestPermission()
+                                        if !granted {
+                                            showPhotoPermissionAlert = true
+                                        }
+                                    }
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "photo.on.rectangle.angled")
+                                        Text("Add Photos")
+                                    }
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .background(Color.black)
+                                    .cornerRadius(12)
                                 }
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 50)
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(12)
+                                .buttonStyle(.plain)
                             }
+                        }
+                        
+                        // Age Preference
+                        VStack(alignment: .leading, spacing: 20) {
+                            Text("Age Preference")
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                .foregroundColor(.gray)
+                            
+                            VStack(spacing: 8) {
+                                RangeSlider(minValue: $minAge, maxValue: $maxAge, range: 18...99)
+                                    .padding(.horizontal)
+                                
+                                HStack {
+                                    Text("\(Int(minAge))")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.gray)
+                                    Spacer()
+                                    Text("\(Int(maxAge))")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.gray)
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                        
+                        // Gender Preference
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Interested in")
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                .foregroundColor(.gray)
+                            Picker("", selection: $selectedPreference) {
+                                ForEach(User.Gender.allCases, id: \.self) { gender in
+                                    Text(gender.rawValue).tag(gender)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(6)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(12)
                             .buttonStyle(.plain)
                         }
-                    }
-                    
-                    // Age Preference
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text("Age Preference")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundColor(.gray)
                         
-                        VStack(spacing: 8) {
-                            RangeSlider(minValue: $minAge, maxValue: $maxAge, range: 18...99)
-                                .padding(.horizontal)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Your Ratio")
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                .foregroundColor(.gray)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             
-                            HStack {
-                                Text("\(Int(minAge))")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.gray)
-                                Spacer()
-                                Text("\(Int(maxAge))")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.gray)
+                            ZStack{
+                                
+                                Text("\(calculateRatio())%")
+                                            .font(.system(size: 50, weight: .bold))
+                                
                             }
-                            .padding(.horizontal)
+                            
                         }
+                        
                     }
-                    
-                    // Gender Preference
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Interested in")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundColor(.gray)
-                        Picker("", selection: $selectedPreference) {
-                            ForEach(User.Gender.allCases, id: \.self) { gender in
-                                Text(gender.rawValue).tag(gender)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(6)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(12)
-                        .buttonStyle(.plain)
-                    }
-                }
                 
                 // Save Button
                 Button {
@@ -289,6 +309,12 @@ struct SettingsView: View {
         } message: {
             Text("Please enable photo access in Settings to select photos for your profile.")
         }
+    }
+    
+    private func calculateRatio() -> Int {
+        let total = model.currentUser!.timesLiked + model.currentUser!.timesDisliked
+        guard total > 0 else { return 0 }
+        return Int((Double(model.currentUser!.timesLiked) / Double(total)) * 100)
     }
 }
 

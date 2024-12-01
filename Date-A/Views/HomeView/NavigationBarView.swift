@@ -26,8 +26,11 @@ struct NavigationBarView: View {
                 Spacer()
                 
                 // App Logo
-                Text("Date-A")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                Text("DATE-A")
+                    .font(.system(size: 34, weight: .heavy))  // .heavy au lieu de .bold pour plus d'épaisseur
+                    .tracking(-1.5)  // Valeur négative pour rapprocher les lettres
+                    .kerning(-0.8)   // Ajustement supplémentaire de l'espacement
+                    .scaleEffect(x: 1.1, y: 1.0)
                 
                 Spacer()
                 
