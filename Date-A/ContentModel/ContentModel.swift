@@ -662,4 +662,21 @@ class ContentModel: ObservableObject {
         let max = min + 20
         return (min, max)
     }
+    
+    func refreshCurrentUser() async throws {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
+        }
+        
+        let docRef = db.collection("users").document(userId)
+        let document = try await docRef.getDocument()
+        
+        guard let userData = try? document.data(as: User.self) else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not decode user data"])
+        }
+        
+        await MainActor.run {
+            self.currentUser = userData
+        }
+    }
 }
