@@ -1,5 +1,7 @@
 import SwiftUI
 import PhotosUI
+import MessageUI
+import UIKit
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -313,9 +315,56 @@ struct SettingsView: View {
     }
 }
 
+struct ShareOption: Identifiable {
+    let id = UUID()
+    let title: String
+    let icon: String
+    let color: Color
+    let urlScheme: String
+}
+
+struct MessageComposerView: UIViewControllerRepresentable {
+    @Binding var hasSharedApp: Bool
+    @Binding var isPresented: Bool
+    
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let composeVC = MFMessageComposeViewController()
+        composeVC.messageComposeDelegate = context.coordinator
+        
+        // Set the message body with your App Store link
+        composeVC.body = "Check out this amazing app! https://apps.apple.com/your-app-link" // Replace with your app link
+        
+        return composeVC
+    }
+    
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        var parent: MessageComposerView
+        
+        init(_ messageComposerView: MessageComposerView) {
+            self.parent = messageComposerView
+        }
+        
+        func messageComposeViewController(_ controller: MFMessageComposeViewController, didFinishWith result: MessageComposeResult) {
+            // Handle the result
+            if result == .sent {
+                parent.hasSharedApp = true // Mark as shared only if message was actually sent
+            }
+            parent.isPresented = false // Dismiss the composer
+        }
+    }
+}
+
 struct CircularProgressView: View {
     let percentage: Double
     @State private var progress: Double = 0
+    @State private var hasSharedApp = false
+    @State private var showShareSheet = false
     
     var body: some View {
         ZStack {
@@ -329,15 +378,168 @@ struct CircularProgressView: View {
                 .trim(from: 0, to: progress)
                 .stroke(Color.black, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                 .frame(width: 150, height: 150)
-                .rotationEffect(.degrees(-90)) // Start from top
+                .rotationEffect(.degrees(-90))
                 .animation(.easeInOut(duration: 1), value: progress)
             
             // Percentage Text
             Text("\(Int(percentage))%")
                 .font(.system(size: 50, weight: .bold))
+            
+            if !hasSharedApp {
+                ZStack {
+                    // First blur layer
+                    
+                  
+                    
+                    // Share button
+                    Button {
+                        showShareSheet = true
+                    } label: {
+                        Text("Share App to See Ratio")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(Color.black)
+                            .cornerRadius(12)
+                    }
+                     
+                }
+            }
         }
         .onAppear {
             progress = percentage / 100
+            hasSharedApp = false
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheetView(hasSharedApp: $hasSharedApp)
+        }
+    }
+}
+
+// ActivityViewController to handle system share sheet
+struct ActivityViewController: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    let applicationActivities: [UIActivity]? = nil
+    @Binding var isPresented: Bool
+    @Binding var hasSharedApp: Bool
+    
+    func makeUIViewController(context: UIViewControllerRepresentableContext<ActivityViewController>) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: applicationActivities
+        )
+        controller.completionWithItemsHandler = { (activityType, completed, returnedItems, error) in
+            if completed {
+                hasSharedApp = true
+            }
+            // Dismiss the system share sheet first
+            isPresented = false
+        }
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: UIViewControllerRepresentableContext<ActivityViewController>) {}
+}
+
+struct ShareSheetView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var hasSharedApp: Bool
+    @State private var showingMessageComposer = false
+    @State private var showingAlert = false
+    @State private var showingSystemShare = false
+    
+    let appURL = "https://apps.apple.com/your-app-link" // Replace with your app link
+    let shareMessage = "Check out this amazing app!" // Customize your share message
+    
+    let shareOptions: [ShareOption] = [
+        ShareOption(title: "Messages", icon: "message.fill", color: .green, urlScheme: ""),
+        ShareOption(title: "Share", icon: "square.and.arrow.up", color: .blue, urlScheme: "")
+    ]
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                // App Icon and Title
+                Image(systemName: "square.and.arrow.up.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(.black)
+                
+                Text("Share the App")
+                    .font(.system(size: 24, weight: .bold))
+                
+                Text("Share our app with friends to unlock your ratio!")
+                    .font(.system(size: 16))
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.gray)
+                    .padding(.horizontal)
+                
+                // Share options grid
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                    ForEach(shareOptions) { option in
+                        Button {
+                            handleShare(option)
+                        } label: {
+                            VStack(spacing: 8) {
+                                Image(systemName: option.icon)
+                                    .font(.system(size: 30))
+                                Text(option.title)
+                                    .font(.system(size: 14, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 80)
+                            .background(option.color.opacity(0.1))
+                            .foregroundColor(option.color)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding()
+            .navigationBarItems(
+                trailing: Button("Cancel") {
+                    dismiss()
+                }
+            )
+        }
+        .sheet(isPresented: $showingMessageComposer) {
+            MessageComposerView(hasSharedApp: $hasSharedApp, isPresented: $showingMessageComposer)
+        }
+        .sheet(isPresented: $showingSystemShare) {
+            ActivityViewController(
+                activityItems: [shareMessage, appURL],
+                isPresented: $showingSystemShare,
+                hasSharedApp: $hasSharedApp
+            )
+        }
+        .alert("Cannot Send Message", isPresented: $showingAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Unable to send messages. Please check your device settings.")
+        }
+        .onChange(of: hasSharedApp) { newValue in
+            if newValue {
+                // Add a slight delay to make the transition smoother
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    dismiss()
+                }
+            }
+        }
+    }
+    
+    private func handleShare(_ option: ShareOption) {
+        switch option.title {
+        case "Messages":
+            if MFMessageComposeViewController.canSendText() {
+                showingMessageComposer = true
+            } else {
+                showingAlert = true
+            }
+        case "Share":
+            showingSystemShare = true
+        default:
+            break
         }
     }
 }
