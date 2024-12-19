@@ -33,9 +33,11 @@ struct Date_AApp: App {
                     if let user = model.currentUser {
                         HomeView()
                             .environmentObject(model)
+                            .preferredColorScheme(.light)
                     } else {
                         FirstView()
                             .environmentObject(model)
+                            .preferredColorScheme(.light)
                     }
                 }
             }

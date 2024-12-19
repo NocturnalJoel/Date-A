@@ -269,8 +269,18 @@ struct SettingsView: View {
                         .background(Color.red)
                         .cornerRadius(16)
                 }
-                .padding(.top, 8)
                 .buttonStyle(.plain)
+                
+                Button{
+                    
+                }label:{
+                    
+                    Text("Delete Account")
+                        .foregroundColor(.red)
+                    
+                }
+                .buttonStyle(.plain)
+                
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
@@ -365,6 +375,7 @@ struct CircularProgressView: View {
     @State private var progress: Double = 0
     @State private var hasSharedApp = false
     @State private var showShareSheet = false
+    @State private var initialAnimation: Double = 0
     
     var body: some View {
         ZStack {
@@ -375,11 +386,12 @@ struct CircularProgressView: View {
             
             // Progress Circle
             Circle()
-                .trim(from: 0, to: progress)
-                .stroke(Color.black, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                .frame(width: 150, height: 150)
-                .rotationEffect(.degrees(-90))
-                .animation(.easeInOut(duration: 1), value: progress)
+                            .trim(from: 0, to: hasSharedApp ? progress : initialAnimation)
+                            .stroke(Color.black, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: 150, height: 150)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeInOut(duration: 1.5), value: initialAnimation)
+                            .animation(.easeInOut(duration: 1), value: progress)
             
             // Percentage Text
             Text("\(Int(percentage))%")
@@ -403,6 +415,7 @@ struct CircularProgressView: View {
                             .background(Color.black)
                             .cornerRadius(12)
                     }
+                    .buttonStyle(.plain)
                      
                 }
             }
@@ -410,6 +423,12 @@ struct CircularProgressView: View {
         .onAppear {
             progress = percentage / 100
             hasSharedApp = false
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            withAnimation {
+                                initialAnimation = 1
+                            }
+                        }
         }
         .sheet(isPresented: $showShareSheet) {
             ShareSheetView(hasSharedApp: $hasSharedApp)
@@ -425,6 +444,7 @@ struct ActivityViewController: UIViewControllerRepresentable {
     @Binding var hasSharedApp: Bool
     
     func makeUIViewController(context: UIViewControllerRepresentableContext<ActivityViewController>) -> UIActivityViewController {
+        print("Debug - Activity items being shared:", activityItems)
         let controller = UIActivityViewController(
             activityItems: activityItems,
             applicationActivities: applicationActivities
@@ -453,7 +473,6 @@ struct ShareSheetView: View {
     let shareMessage = "Check out this amazing app!" // Customize your share message
     
     let shareOptions: [ShareOption] = [
-        ShareOption(title: "Messages", icon: "message.fill", color: .green, urlScheme: ""),
         ShareOption(title: "Share", icon: "square.and.arrow.up", color: .blue, urlScheme: "")
     ]
     
@@ -475,7 +494,7 @@ struct ShareSheetView: View {
                     .padding(.horizontal)
                 
                 // Share options grid
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                LazyVGrid(columns: [GridItem(.flexible())], spacing: 16) {
                     ForEach(shareOptions) { option in
                         Button {
                             handleShare(option)
@@ -492,6 +511,7 @@ struct ShareSheetView: View {
                             .foregroundColor(option.color)
                             .cornerRadius(12)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal)
@@ -508,7 +528,7 @@ struct ShareSheetView: View {
         }
         .sheet(isPresented: $showingSystemShare) {
             ActivityViewController(
-                activityItems: [shareMessage, appURL],
+                activityItems: [appURL],
                 isPresented: $showingSystemShare,
                 hasSharedApp: $hasSharedApp
             )

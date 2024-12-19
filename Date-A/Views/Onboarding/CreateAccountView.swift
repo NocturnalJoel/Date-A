@@ -10,6 +10,17 @@ import PhotosUI
 import Firebase
 import FirebaseStorage
 import FirebaseAuth
+import FirebaseAnalytics
+
+struct BlackMenuPickerStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .accentColor(.black)
+            .onAppear {
+                UIView.appearance(whenContainedInInstancesOf: [UIPickerView.self]).tintColor = .black
+            }
+    }
+}
 
 struct CreateAccountView: View {
     @EnvironmentObject var model: ContentModel
@@ -17,6 +28,7 @@ struct CreateAccountView: View {
     @State private var showPhotoPermissionAlert = false
     @State private var progressValue: CGFloat = 0
     @State private var showProgress = false
+    @State private var selectedReferralSource: ReferralSource = .friend
     
     // Create Account states
     @State private var firstName = ""
@@ -27,6 +39,14 @@ struct CreateAccountView: View {
     @State private var createPassword = ""
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
+    
+    enum ReferralSource: String, CaseIterable {
+        case friend = "From a friend"
+        case news = "From the news media"
+        case social = "From social media"
+        case ad = "From an ad"
+        case event = "From an event"
+    }
     
     // MARK: - Subviews
     private var headerView: some View {
@@ -174,6 +194,24 @@ struct CreateAccountView: View {
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(12)
                         }
+                        VStack(alignment: .leading, spacing: 8) {
+                                Text("How did you hear about us?")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.gray)
+                                Picker("Referral Source", selection: $selectedReferralSource) {
+                                    ForEach(ReferralSource.allCases, id: \.self) { source in
+                                        Text(source.rawValue)
+                                            .tag(source)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .font(.system(size: 17))
+                                .modifier(BlackMenuPickerStyle())
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(12)
+                            }
                     }
                     
                     // Profile Photos Section
@@ -239,7 +277,14 @@ struct CreateAccountView: View {
                     }
                 }
                 
+                
+                
                 createAccountButton
+                
+                Text("By creating an account, you agree to the possibility of being contacted via email.")
+                    .foregroundColor(.gray)
+                    .padding(.horizontal)
+                
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
@@ -296,6 +341,10 @@ struct CreateAccountView: View {
         withAnimation(.linear(duration: 2)) {
             progressValue = 1.0
         }
+        
+        Analytics.logEvent("account_creation", parameters: [
+                    "referral_source": selectedReferralSource.rawValue
+                ])
         
         Task {
             do {

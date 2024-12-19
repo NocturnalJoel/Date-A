@@ -152,9 +152,9 @@
 		9F6E7FA22CFCF84600AE4022 /* Onboarding */ = {
 			isa = PBXGroup;
 			children = (
+				9F6E7F9A2CFCED7500AE4022 /* FirstView.swift */,
 				9F6E7FA02CFCF33000AE4022 /* CreateAccountView.swift */,
 				9F6E7F9E2CFCF32000AE4022 /* SignInView.swift */,
-				9F6E7F9A2CFCED7500AE4022 /* FirstView.swift */,
 			);
 			path = Onboarding;
 			sourceTree = "<group>";
