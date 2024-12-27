@@ -37,6 +37,7 @@
 		9FC207DC2CD858E200FF3E21 /* ContentModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC207DB2CD858E200FF3E21 /* ContentModel.swift */; };
 		9FC207E62CD866CD00FF3E21 /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 9FC207E52CD866CD00FF3E21 /* SDWebImageSwiftUI */; };
 		9FC207EA2CD954BE00FF3E21 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC207E92CD954BE00FF3E21 /* Model.swift */; };
+		9FE7072A2D1F6A8F0092B22B /* DeleteAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE707292D1F6A8F0092B22B /* DeleteAccountView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -83,6 +84,7 @@
 		9F8CFAB72CD55C8F00C239BA /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		9FC207DB2CD858E200FF3E21 /* ContentModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentModel.swift; sourceTree = "<group>"; };
 		9FC207E92CD954BE00FF3E21 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
+		9FE707292D1F6A8F0092B22B /* DeleteAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeleteAccountView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +137,7 @@
 			children = (
 				9F33FB0E2CE1ADDC004F3D37 /* SettingsView.swift */,
 				9F33FB182CE1BCE1004F3D37 /* RangeSlider.swift */,
+				9FE707292D1F6A8F0092B22B /* DeleteAccountView.swift */,
 			);
 			path = SettingsView;
 			sourceTree = "<group>";
@@ -405,6 +408,7 @@
 				9F33FB0B2CE1AB3A004F3D37 /* ProfileCardView.swift in Sources */,
 				9F6E7FA12CFCF33000AE4022 /* CreateAccountView.swift in Sources */,
 				9F33FB0D2CE1AD5E004F3D37 /* NavigationBarView.swift in Sources */,
+				9FE7072A2D1F6A8F0092B22B /* DeleteAccountView.swift in Sources */,
 				9F6E7F9F2CFCF32000AE4022 /* SignInView.swift in Sources */,
 				9FC207EA2CD954BE00FF3E21 /* Model.swift in Sources */,
 			);

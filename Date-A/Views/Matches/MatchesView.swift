@@ -11,7 +11,6 @@ import FirebaseAuth
 struct MatchesView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var model: ContentModel
-    @State private var isLoading = false
     
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -33,16 +32,7 @@ struct MatchesView: View {
                 }
                 .padding(.top, 20)
                 
-                if isLoading {
-                    VStack(spacing: 20) {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                        Text("Loading your matches...")
-                            .font(.system(size: 16, design: .rounded))
-                            .foregroundColor(.gray)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 200)
-                } else if model.matches.isEmpty {
+                if model.matches.isEmpty {
                     VStack(spacing: 24) {
                         Image(systemName: "heart.slash")
                             .font(.system(size: 44))
@@ -78,11 +68,7 @@ struct MatchesView: View {
             .padding(.bottom, 32)
         }
         .navigationBarHidden(true)
-        .task {
-            isLoading = true
-            try? await model.fetchMatches()
-            isLoading = false
-        }
+        
     }
 }
 

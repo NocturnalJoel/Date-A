@@ -679,4 +679,66 @@ class ContentModel: ObservableObject {
             self.currentUser = userData
         }
     }
+    
+    func deleteAccount() async throws {
+        guard let user = Auth.auth().currentUser,
+              let currentUser = self.currentUser else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No current user found"])
+        }
+        
+        // Create batch write for Firestore operations
+        let batch = db.batch()
+        
+        // Delete user's Firestore document
+        let userRef = db.collection("users").document(user.uid)
+        batch.deleteDocument(userRef)
+        
+        // Delete matches
+        let matchesRef = userRef.collection("matches")
+        let matchesDocs = try await matchesRef.getDocuments()
+        for doc in matchesDocs.documents {
+            // Delete the match document from the matches collection
+            batch.deleteDocument(db.collection("matches").document(doc.documentID))
+            batch.deleteDocument(doc.reference)
+        }
+        
+        // Delete likes_sent and likes_received
+        let likesSentDocs = try await userRef.collection("likes_sent").getDocuments()
+        for doc in likesSentDocs.documents {
+            batch.deleteDocument(doc.reference)
+        }
+        
+        let likesReceivedDocs = try await userRef.collection("likes_received").getDocuments()
+        for doc in likesReceivedDocs.documents {
+            batch.deleteDocument(doc.reference)
+        }
+        
+        // Delete dislikes
+        let dislikesDocs = try await userRef.collection("dislikes").getDocuments()
+        for doc in dislikesDocs.documents {
+            batch.deleteDocument(doc.reference)
+        }
+        
+        // Commit Firestore changes
+        try await batch.commit()
+        
+        // Delete images from Storage
+        for urlString in currentUser.pictureURLs {
+            if let url = URL(string: urlString),
+               let storagePath = url.path.components(separatedBy: "o/").last?.removingPercentEncoding {
+                let storageRef = Storage.storage().reference().child(storagePath)
+                try await storageRef.delete()
+            }
+        }
+        
+        // Delete Firebase Auth account
+        try await user.delete()
+        
+        // Clear local state
+        await MainActor.run {
+            self.currentUser = nil
+            self.isLoggedIn = false
+        }
+    }
+   
 }

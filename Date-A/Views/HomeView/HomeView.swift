@@ -77,7 +77,19 @@ struct HomeView: View {
                     .environmentObject(model)
                 }
                 .navigationBarHidden(true)
-                .onAppear { model.startFetchingProfiles() }
+                .onAppear {
+                    
+                    model.startFetchingProfiles()
+                    Task {
+                            do {
+                                try await model.fetchMatches()
+                            } catch {
+                                // Handle the error appropriately
+                                print("Error fetching matches: \(error)")
+                            }
+                        }
+                    
+                }
                 
             
         }

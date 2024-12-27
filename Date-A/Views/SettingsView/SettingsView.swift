@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var showPhotoPermissionAlert = false
     @State private var isPhotosLoading = false
     @State private var isSaving = false // Added for ratio loading state
+    @State private var showDeleteAccount = false
     
     private func refreshUserData() async {
        
@@ -271,15 +272,17 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
                 
-                Button{
-                    
-                }label:{
-                    
+                Button {
+                    showDeleteAccount = true
+                } label: {
                     Text("Delete Account")
                         .foregroundColor(.red)
-                    
                 }
                 .buttonStyle(.plain)
+                .sheet(isPresented: $showDeleteAccount) {
+                    DeleteAccountView()
+                        .environmentObject(model)
+                }
                 
             }
             .padding(.horizontal, 24)
