@@ -59,6 +59,7 @@ struct ChatView: View {
                     .frame(width: 100, height: 40)
                 }
                 .padding(.trailing)
+                .buttonStyle(.plain)
             }
             .padding()
             .background(Color.white)

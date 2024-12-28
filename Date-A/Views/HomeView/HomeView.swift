@@ -82,6 +82,7 @@ struct HomeView: View {
                     model.startFetchingProfiles()
                     Task {
                             do {
+                                await model.loadUnmatchedProfiles()
                                 try await model.fetchMatches()
                             } catch {
                                 // Handle the error appropriately

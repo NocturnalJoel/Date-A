@@ -23,6 +23,12 @@ class ContentModel: ObservableObject {
     private var profileQueue: [User] = []
     private var lastFetchedUserId: String?
     
+    
+    
+    @Published var unmatchedProfiles: [(id: String, name: String, imageUrl: String)] = []
+    
+    
+    
     @Published var matches: [User] = []
     
     @Published var messages: [Message] = []
@@ -867,5 +873,73 @@ class ContentModel: ObservableObject {
         try await batch.commit()
     }
 
-   
+    func fetchUnmatchedProfiles() async throws -> [(id: String, name: String, imageUrl: String)] {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("❌ No current user ID")
+            return []
+        }
+        
+        print("📄 Fetching user document for ID: \(currentUserId)")
+        let userDoc = try await db.collection("users").document(currentUserId).getDocument()
+        let unmatches = userDoc.data()?["unmatches"] as? [String] ?? []
+        print("📋 Found \(unmatches.count) unmatches in user document")
+        
+        var profiles: [(id: String, name: String, imageUrl: String)] = []
+        
+        for unmatchId in unmatches {
+            print("🔍 Fetching profile for unmatch ID: \(unmatchId)")
+            let unmatchDoc = try await db.collection("users").document(unmatchId).getDocument()
+            if let data = unmatchDoc.data(),
+               let name = data["firstName"] as? String,  // Changed from "name" to "firstName" to match your User model
+               let imageUrl = data["pictureURLs"] as? [String],  // Changed to match your User model
+               let firstImage = imageUrl.first {
+                profiles.append((id: unmatchId, name: name, imageUrl: firstImage))
+                print("✅ Added profile for \(name)")
+            }
+        }
+        
+        print("📱 Returning \(profiles.count) profiles")
+        return profiles
+    }
+
+    func rateUnmatchedUser(unmatchedUserId: String, rating: Int) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        // Get the unmatcher's current rating data
+        let unmatcherDoc = try await db.collection("users").document(unmatchedUserId).getDocument()
+        let unmatcherData = unmatcherDoc.data() ?? [:]
+        
+        // Extract current rating data, defaulting to 5.0 if none exists
+        let currentRating = (unmatcherData["chatReview"] as? [String: Any])?["chatRating"] as? Double ?? 5.0
+        let currentNumberOfRates = (unmatcherData["chatReview"] as? [String: Any])?["numberOfRates"] as? Int ?? 0
+        
+        // Calculate new average rating
+        let totalCurrentRating = currentRating * Double(currentNumberOfRates)
+        let newNumberOfRates = currentNumberOfRates + 1
+        let newAverageRating = (totalCurrentRating + Double(rating)) / Double(newNumberOfRates)
+        
+        let batch = db.batch()
+        
+        // Update unmatcher's rating
+        let unmatcherRef = db.collection("users").document(unmatchedUserId)
+        batch.updateData([
+            "chatReview.chatRating": newAverageRating,
+            "chatReview.numberOfRates": newNumberOfRates
+        ], forDocument: unmatcherRef)
+        
+        // Remove unmatcher's ID from current user's unmatches array
+        let currentUserRef = db.collection("users").document(currentUserId)
+        batch.updateData([
+            "unmatches": FieldValue.arrayRemove([unmatchedUserId])
+        ], forDocument: currentUserRef)
+        
+        try await batch.commit()
+    }
+    
+    func loadUnmatchedProfiles() async {
+        let profiles = try? await fetchUnmatchedProfiles()
+        await MainActor.run {
+            self.unmatchedProfiles = profiles ?? []
+        }
+    }
 }

@@ -52,6 +52,7 @@ struct DeleteAccountView: View {
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(10)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.vertical)

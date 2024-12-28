@@ -56,6 +56,7 @@ struct ManageMatchView: View {
                         .foregroundColor(.white)
                 }
             }
+            .buttonStyle(.plain)
             
             Button {
                 withAnimation {
@@ -75,6 +76,7 @@ struct ManageMatchView: View {
                         .foregroundColor(.white)
                 }
             }
+            .buttonStyle(.plain)
             
             Text("At any time, you can unilaterally unmatch.")
                 .padding(.top)
@@ -96,6 +98,7 @@ struct ManageMatchView: View {
                         .foregroundColor(.white)
                 }
             }
+            .buttonStyle(.plain)
         }
         .padding()
         .onAppear {

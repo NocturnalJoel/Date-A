@@ -46,6 +46,7 @@ struct RatingPopupView: View {
                         isPresented = false
                     }
                     .foregroundColor(.gray)
+                    .buttonStyle(.plain)
                     
                     Button{
                         Task {
@@ -69,6 +70,7 @@ struct RatingPopupView: View {
                     }
                     .frame(width: 100, height: 40)
                     .disabled(selectedRating == 0)
+                    .buttonStyle(.plain)
                     
                     
                     

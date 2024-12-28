@@ -12,6 +12,10 @@ struct MatchesView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var model: ContentModel
     
+    @State private var showingRatingPopup = false
+    @State private var selectedUnmatchId: String?
+    
+    
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 32) {
@@ -47,6 +51,8 @@ struct MatchesView: View {
                             .font(.system(size: 16, design: .rounded))
                             .foregroundColor(.gray.opacity(0.8))
                             .multilineTextAlignment(.center)
+                        
+                        
                     }
                     .frame(maxWidth: .infinity, minHeight: 300)
                     .padding(.horizontal)
@@ -63,13 +69,35 @@ struct MatchesView: View {
                         }
                     }
                 }
+                if !model.unmatchedProfiles.isEmpty {
+                                    UnmatchesSection(showingRatingPopup: $showingRatingPopup,
+                                                     selectedUnmatchId: $selectedUnmatchId)
+                                        .environmentObject(model)
+                                }
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
+            
         }
         .navigationBarHidden(true)
+        .overlay {
+                    // Move the overlay here
+                    if showingRatingPopup, let unmatchId = selectedUnmatchId {
+                        RatingPopupView(
+                            isPresented: $showingRatingPopup,
+                            matchId: ""
+                        ) { rating in
+                            Task {
+                                try? await model.rateUnmatchedUser(unmatchedUserId: unmatchId, rating: rating)
+                                await model.loadUnmatchedProfiles()
+                            }
+                        }
+                    }
+                }
         
     }
+    
+    
 }
 
 // Extracted match card component for better organization
@@ -132,5 +160,49 @@ struct MatchCard: View {
                 .fill(Color.white)
                 .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
         )
+    }
+}
+
+struct UnmatchesSection: View {
+    @EnvironmentObject var model: ContentModel
+    @Binding var showingRatingPopup: Bool
+    @Binding var selectedUnmatchId: String?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Rate your Unmatches")
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 15) {
+                    ForEach(model.unmatchedProfiles, id: \.id) { profile in
+                        VStack {
+                            AsyncImage(url: URL(string: profile.imageUrl)) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } placeholder: {
+                                Color.gray
+                            }
+                            .frame(width: 80, height: 80)
+                            .clipShape(Circle())
+                            
+                            Text(profile.name)
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .lineLimit(1)
+                        }
+                        .onTapGesture {
+                            selectedUnmatchId = profile.id
+                            showingRatingPopup = true
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+        .padding(.vertical)
+        
     }
 }
