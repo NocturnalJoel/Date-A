@@ -10,6 +10,9 @@ struct ChatView: View {
     @State private var messageText = ""
     @State private var isLoading = false
     @FocusState private var isFocused: Bool
+    @State private var shouldPopToRoot = false
+    
+    @State private var showingManageSheet = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +44,21 @@ struct ChatView: View {
                     .foregroundColor(.black)
                 
                 Spacer()
+                
+                Button{
+                    showingManageSheet = true
+                }label:{
+                    ZStack{
+                        Capsule()
+                            .foregroundColor(Color.black.opacity(0.5))
+                        Text("Manage")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 100, height: 40)
+                }
+                .padding(.trailing)
             }
             .padding()
             .background(Color.white)
@@ -87,5 +105,13 @@ struct ChatView: View {
             try? await model.fetchMessages(for: matchId)
             isLoading = false
         }
+        .sheet(isPresented: $showingManageSheet) {
+                    ManageMatchView(shouldPopToRoot: $shouldPopToRoot, matchId: matchId)
+                }
+                .onChange(of: shouldPopToRoot) { newValue in
+                    if newValue {
+                        dismiss()
+                    }
+                }
     }
 }

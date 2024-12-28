@@ -740,5 +740,132 @@ class ContentModel: ObservableObject {
             self.isLoggedIn = false
         }
     }
+    
+    // Add these functions inside your ContentModel class
+
+    func updateMatchSocialRequest(matchId: String) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        let matchRef = db.collection("matches").document(matchId)
+        
+        // First, get the current state of the document
+        let matchDoc = try await matchRef.getDocument()
+        let data = matchDoc.data()
+        
+        var updates: [String: Any] = [:]
+        
+        // Check if there's already a social request from the other user
+        if let existingSocialRequest = data?["socialRequest"] as? [String: Any],
+           let otherUserId = (data?["users"] as? [String])?.first(where: { $0 != currentUserId }) {
+            
+            // If the other user has already requested, add both users to confirmed
+            if existingSocialRequest[otherUserId] as? Bool == true {
+                updates["socialRequestConfirmed"] = true
+            }
+        }
+        
+        // Add or update current user's request
+        updates["socialRequest.\(currentUserId)"] = true
+        
+        try await matchRef.updateData(updates)
+    }
+
+    func updateMatchDateRequest(matchId: String) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        let matchRef = db.collection("matches").document(matchId)
+        
+        // First, get the current state of the document
+        let matchDoc = try await matchRef.getDocument()
+        let data = matchDoc.data()
+        
+        var updates: [String: Any] = [:]
+        
+        // Check if there's already a date request from the other user
+        if let existingDateRequest = data?["dateRequest"] as? [String: Any],
+           let otherUserId = (data?["users"] as? [String])?.first(where: { $0 != currentUserId }) {
+            
+            // If the other user has already requested, add both users to confirmed
+            if existingDateRequest[otherUserId] as? Bool == true {
+                updates["dateRequestConfirmed"] = true
+            }
+        }
+        
+        // Add or update current user's request
+        updates["dateRequest.\(currentUserId)"] = true
+        
+        try await matchRef.updateData(updates)
+    }
+    
+    func fetchMatchState(matchId: String) async throws -> (hasSocialRequest: Bool, hasDateRequest: Bool) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            return (false, false)
+        }
+        
+        let matchDoc = try await db.collection("matches").document(matchId).getDocument()
+        if let data = matchDoc.data() {
+            let socialRequest = data["socialRequest"] as? [String: Any]
+            let dateRequest = data["dateRequest"] as? [String: Any]
+            
+            return (
+                hasSocialRequest: (socialRequest?[currentUserId] as? Bool) == true,
+                hasDateRequest: (dateRequest?[currentUserId] as? Bool) == true
+            )
+        }
+        
+        return (false, false)
+    }
+    
+    func unmatchAndRate(matchId: String, rating: Int) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        // Get the match document to find the other user's ID
+        let matchDoc = try await db.collection("matches").document(matchId).getDocument()
+        guard let data = matchDoc.data(),
+              let users = data["users"] as? [String],
+              let otherUserId = users.first(where: { $0 != currentUserId }) else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid match data"])
+        }
+        
+        // Get the other user's current rating data
+        let otherUserDoc = try await db.collection("users").document(otherUserId).getDocument()
+        let otherUserData = otherUserDoc.data() ?? [:]
+        
+        // Extract current rating data, defaulting to 5.0 if none exists
+        let currentRating = (otherUserData["chatReview"] as? [String: Any])?["chatRating"] as? Double ?? 5.0
+        let currentNumberOfRates = (otherUserData["chatReview"] as? [String: Any])?["numberOfRates"] as? Int ?? 0
+        
+        // Calculate new average rating
+        let totalCurrentRating = currentRating * Double(currentNumberOfRates)
+        let newNumberOfRates = currentNumberOfRates + 1
+        let newAverageRating = (totalCurrentRating + Double(rating)) / Double(newNumberOfRates)
+        
+        let batch = db.batch()
+        
+        // Delete match document
+        let matchRef = db.collection("matches").document(matchId)
+        batch.deleteDocument(matchRef)
+        
+        // Delete match from current user's matches collection
+        let currentUserMatchRef = db.collection("users").document(currentUserId)
+            .collection("matches").document(matchId)
+        batch.deleteDocument(currentUserMatchRef)
+        
+        // Delete match from other user's matches collection
+        let otherUserMatchRef = db.collection("users").document(otherUserId)
+            .collection("matches").document(matchId)
+        batch.deleteDocument(otherUserMatchRef)
+        
+        // Update other user's document with unmatches array, numberOfRates, and new average rating
+        let otherUserRef = db.collection("users").document(otherUserId)
+        batch.updateData([
+            "unmatches": FieldValue.arrayUnion([currentUserId]),
+            "chatReview.numberOfRates": newNumberOfRates,
+            "chatReview.chatRating": newAverageRating
+        ], forDocument: otherUserRef)
+        
+        try await batch.commit()
+    }
+
    
 }

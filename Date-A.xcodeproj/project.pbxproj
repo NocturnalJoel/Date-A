@@ -38,6 +38,8 @@
 		9FC207E62CD866CD00FF3E21 /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 9FC207E52CD866CD00FF3E21 /* SDWebImageSwiftUI */; };
 		9FC207EA2CD954BE00FF3E21 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC207E92CD954BE00FF3E21 /* Model.swift */; };
 		9FE7072A2D1F6A8F0092B22B /* DeleteAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE707292D1F6A8F0092B22B /* DeleteAccountView.swift */; };
+		9FE7072C2D1FB5B70092B22B /* ManageMatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE7072B2D1FB5B70092B22B /* ManageMatchView.swift */; };
+		9FE7072E2D1FC4410092B22B /* RatingPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE7072D2D1FC4410092B22B /* RatingPopupView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -85,6 +87,8 @@
 		9FC207DB2CD858E200FF3E21 /* ContentModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentModel.swift; sourceTree = "<group>"; };
 		9FC207E92CD954BE00FF3E21 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
 		9FE707292D1F6A8F0092B22B /* DeleteAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeleteAccountView.swift; sourceTree = "<group>"; };
+		9FE7072B2D1FB5B70092B22B /* ManageMatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageMatchView.swift; sourceTree = "<group>"; };
+		9FE7072D2D1FC4410092B22B /* RatingPopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPopupView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -148,6 +152,8 @@
 				9F33FB102CE1ADE6004F3D37 /* MatchesView.swift */,
 				9F6E7F922CED92D300AE4022 /* ChatView.swift */,
 				9F6E7F902CED92AB00AE4022 /* MessageBubble.swift */,
+				9FE7072B2D1FB5B70092B22B /* ManageMatchView.swift */,
+				9FE7072D2D1FC4410092B22B /* RatingPopupView.swift */,
 			);
 			path = Matches;
 			sourceTree = "<group>";
@@ -407,10 +413,12 @@
 				9F33FB132CE1AEE7004F3D37 /* ButtonsView.swift in Sources */,
 				9F33FB0B2CE1AB3A004F3D37 /* ProfileCardView.swift in Sources */,
 				9F6E7FA12CFCF33000AE4022 /* CreateAccountView.swift in Sources */,
+				9FE7072E2D1FC4410092B22B /* RatingPopupView.swift in Sources */,
 				9F33FB0D2CE1AD5E004F3D37 /* NavigationBarView.swift in Sources */,
 				9FE7072A2D1F6A8F0092B22B /* DeleteAccountView.swift in Sources */,
 				9F6E7F9F2CFCF32000AE4022 /* SignInView.swift in Sources */,
 				9FC207EA2CD954BE00FF3E21 /* Model.swift in Sources */,
+				9FE7072C2D1FB5B70092B22B /* ManageMatchView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
