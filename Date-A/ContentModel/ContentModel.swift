@@ -5,7 +5,7 @@ import FirebaseStorage
 import Photos
 import SwiftUI
 
-class ContentModel: ObservableObject {
+class ContentModel: NSObject, ObservableObject {
     @AppStorage("isLoggedIn") var isLoggedIn = false
     @Published var currentUser: User?
     @Published var errorMessage = ""
@@ -42,6 +42,21 @@ class ContentModel: ObservableObject {
     private let stackSize = 10
     
     @Published var currentProfileIndex: Int = 0
+    
+    
+    
+    
+    @Published var fcmToken: String?
+        
+        override init() {
+            super.init()
+            
+            // Listen for FCM token updates
+            NotificationCenter.default.addObserver(self,
+                                                 selector: #selector(updateFCMToken),
+                                                 name: Notification.Name("FCMToken"),
+                                                 object: nil)
+        }
 
     
     @Published var moonSliderLevel: Int = 2 {
@@ -62,6 +77,24 @@ class ContentModel: ObservableObject {
                 }
             }
         }
+    
+    @objc private func updateFCMToken(_ notification: Notification) {
+           if let token = notification.userInfo?["token"] as? String {
+               self.fcmToken = token
+               // Update the token in Firestore when user is logged in
+               if let userId = Auth.auth().currentUser?.uid {
+                   Task {
+                       try? await updateUserFCMToken(userId: userId, token: token)
+                   }
+               }
+           }
+       }
+       
+       private func updateUserFCMToken(userId: String, token: String) async throws {
+           try await db.collection("users").document(userId).updateData([
+               "fcmToken": token
+           ])
+       }
     
     func startFetchingProfiles() {
             Task { await fetchProfiles() }
@@ -181,6 +214,12 @@ class ContentModel: ObservableObject {
             
             let decodedUser = try Firestore.Decoder().decode(User.self, from: data)
             
+            if let fcmToken = self.fcmToken {
+                        try await db.collection("users").document(authResult.user.uid).updateData([
+                            "fcmToken": fcmToken
+                        ])
+                    }
+            
             DispatchQueue.main.async {
                 self.currentUser = decodedUser
                 self.isLoggedIn = true
@@ -191,6 +230,8 @@ class ContentModel: ObservableObject {
             }
             throw error
         }
+        
+        
     }
     
     func createAccount(firstName: String, age: Int, gender: User.Gender,
@@ -289,7 +330,8 @@ class ContentModel: ObservableObject {
                 timesDisliked: 0,
                 timesLiked: 0,
                 minAgePreference: 18,
-                maxAgePreference: 99
+                maxAgePreference: 99,
+                fcmToken: self.fcmToken
             )
             
             // 4. Create Firestore document
@@ -322,6 +364,9 @@ class ContentModel: ObservableObject {
         }
     
     func signOut() async throws {
+        if let userId = Auth.auth().currentUser?.uid {
+                    try await updateUserFCMToken(userId: userId, token: "")
+                }
             do {
                 try Auth.auth().signOut()
                 await MainActor.run {

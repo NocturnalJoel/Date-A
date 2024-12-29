@@ -9,6 +9,8 @@ struct HomeView: View {
     
     @EnvironmentObject var model: ContentModel
     
+    @State private var matchedUser: User?
+    @State private var showMatchAnimation = false
     // Sample user for preview
     
     
@@ -73,11 +75,18 @@ struct HomeView: View {
                     //
                     Spacer()
                     
-                    ButtonsView()
+                    ButtonsView(showMatchAnimation: $showMatchAnimation, matchedUser: $matchedUser)
                     .environmentObject(model)
                 }
                 .navigationBarHidden(true)
-                .onAppear {
+                .overlay(
+                    ZStack {
+                                        if showMatchAnimation, let matchedUser = matchedUser {
+                                            MatchAnimationView(isPresented: $showMatchAnimation, matchedUser: matchedUser)
+                                        }
+                                    }
+
+                            )                .onAppear {
                     
                     model.startFetchingProfiles()
                     Task {

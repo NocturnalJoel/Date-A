@@ -13,6 +13,7 @@ struct User: Identifiable, Codable, Equatable {
     var timesLiked: Int
     var minAgePreference: Int 
     var maxAgePreference: Int
+    var fcmToken: String?
 
     
     enum Gender: String, Codable, CaseIterable {
