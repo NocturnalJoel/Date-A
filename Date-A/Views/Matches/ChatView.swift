@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
 
 struct ChatView: View {
     let matchedUser: User
@@ -104,6 +105,15 @@ struct ChatView: View {
         .task {
             isLoading = true
             try? await model.fetchMessages(for: matchId)
+            
+            try? await Firestore.firestore()
+                    .collection("matches")
+                    .document(matchId)
+                    .updateData([
+                        "viewed.\(Auth.auth().currentUser?.uid ?? "")": FieldValue.serverTimestamp()
+                    ])
+            
+            
             isLoading = false
         }
         .sheet(isPresented: $showingManageSheet) {

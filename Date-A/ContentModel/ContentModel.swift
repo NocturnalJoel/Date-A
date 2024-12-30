@@ -79,22 +79,29 @@ class ContentModel: NSObject, ObservableObject {
         }
     
     @objc private func updateFCMToken(_ notification: Notification) {
-           if let token = notification.userInfo?["token"] as? String {
-               self.fcmToken = token
-               // Update the token in Firestore when user is logged in
-               if let userId = Auth.auth().currentUser?.uid {
-                   Task {
-                       try? await updateUserFCMToken(userId: userId, token: token)
-                   }
-               }
-           }
-       }
-       
-       private func updateUserFCMToken(userId: String, token: String) async throws {
-           try await db.collection("users").document(userId).updateData([
-               "fcmToken": token
-           ])
-       }
+        print("📱 updateFCMToken called in ContentModel")
+        if let token = notification.userInfo?["token"] as? String {
+            print("🔄 Received new FCM token in ContentModel: \(token)")
+            self.fcmToken = token
+            // Don't try to update Firestore here - wait for explicit login
+            print("💾 Token stored locally, waiting for user login")
+        }
+    }
+
+    private func updateUserFCMToken(userId: String, token: String) async throws {
+        print("📝 Starting Firestore token update for user: \(userId)")
+        print("🔑 Token to save: \(token)")
+        
+        do {
+            try await db.collection("users").document(userId).updateData([
+                "fcmToken": token
+            ])
+            print("✅ Token successfully saved to Firestore")
+        } catch {
+            print("❌ Error saving token to Firestore: \(error)")
+            throw error
+        }
+    }
     
     func startFetchingProfiles() {
             Task { await fetchProfiles() }
@@ -192,19 +199,17 @@ class ContentModel: NSObject, ObservableObject {
     //
     
     
-    
     func signIn(email: String, password: String) async throws {
+        print("🔐 Starting sign in process")
+        
         DispatchQueue.main.async {
             self.isLoading = true
-        }
-        defer {
-            DispatchQueue.main.async {
-                self.isLoading = false
-            }
         }
         
         do {
             let authResult = try await Auth.auth().signIn(withEmail: email, password: password)
+            print("✅ Firebase Auth sign in successful")
+            
             let docRef = db.collection("users").document(authResult.user.uid)
             let document = try await docRef.getDocument()
             
@@ -214,24 +219,30 @@ class ContentModel: NSObject, ObservableObject {
             
             let decodedUser = try Firestore.Decoder().decode(User.self, from: data)
             
+            // Update FCM token only after successful login
             if let fcmToken = self.fcmToken {
-                        try await db.collection("users").document(authResult.user.uid).updateData([
-                            "fcmToken": fcmToken
-                        ])
-                    }
+                print("📱 Updating FCM token after login for user: \(authResult.user.uid)")
+                print("🔑 Token to update: \(fcmToken)")
+                try await updateUserFCMToken(userId: authResult.user.uid, token: fcmToken)
+            }
             
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.currentUser = decodedUser
                 self.isLoggedIn = true
+                print("✅ User successfully logged in and state updated")
             }
         } catch {
+            print("❌ Sign in error: \(error.localizedDescription)")
             DispatchQueue.main.async {
                 self.errorMessage = error.localizedDescription
+                self.isLoading = false
             }
             throw error
         }
         
-        
+        DispatchQueue.main.async {
+            self.isLoading = false
+        }
     }
     
     func createAccount(firstName: String, age: Int, gender: User.Gender,
@@ -355,13 +366,27 @@ class ContentModel: NSObject, ObservableObject {
     }
     
     func checkAuthStatus() {
-            // Simply check if user is logged in with Firebase
-            if Auth.auth().currentUser != nil {
-                isLoggedIn = true
-            } else {
-                isLoggedIn = false
+        if Auth.auth().currentUser != nil {
+            // Instead of immediately setting isLoggedIn to true,
+            // fetch the user data first
+            Task {
+                do {
+                    try await refreshCurrentUser()
+                    await MainActor.run {
+                        self.isLoggedIn = true
+                    }
+                } catch {
+                    print("❌ Error refreshing user: \(error)")
+                    await MainActor.run {
+                        self.isLoggedIn = false
+                    }
+                }
             }
+        } else {
+            isLoggedIn = false
         }
+    }
+
     
     func signOut() async throws {
         if let userId = Auth.auth().currentUser?.uid {

@@ -89,6 +89,7 @@
 		9FE707292D1F6A8F0092B22B /* DeleteAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeleteAccountView.swift; sourceTree = "<group>"; };
 		9FE7072B2D1FB5B70092B22B /* ManageMatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageMatchView.swift; sourceTree = "<group>"; };
 		9FE7072D2D1FC4410092B22B /* RatingPopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPopupView.swift; sourceTree = "<group>"; };
+		9FE7072F2D21FC9A0092B22B /* Date-A.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Date-A.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -191,6 +192,7 @@
 		9F8CFA892CD55A4300C239BA /* Date-A */ = {
 			isa = PBXGroup;
 			children = (
+				9FE7072F2D21FC9A0092B22B /* Date-A.entitlements */,
 				9F6E7FA72CFD8C2500AE4022 /* Info.plist */,
 				9F8CFA8A2CD55A4300C239BA /* Date_AApp.swift */,
 				9F8CFAB42CD55A7200C239BA /* Views */,
@@ -579,6 +581,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Date-A/Date-A.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Date-A/Preview Content\"";
@@ -611,6 +614,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Date-A/Date-A.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Date-A/Preview Content\"";

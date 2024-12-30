@@ -7,6 +7,7 @@
 
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
 
 struct MatchesView: View {
     @Environment(\.dismiss) private var dismiss
@@ -63,7 +64,10 @@ struct MatchesView: View {
                                 matchedUser: match,
                                 matchId: [Auth.auth().currentUser?.uid ?? "", match.id].sorted().joined(separator: "_")
                             )) {
-                                MatchCard(match: match)
+                                MatchCard(
+                                    match: match,
+                                    matchId: [Auth.auth().currentUser?.uid ?? "", match.id].sorted().joined(separator: "_")
+                                )
                             }
                             .buttonStyle(.plain)
                         }
@@ -103,6 +107,9 @@ struct MatchesView: View {
 // Extracted match card component for better organization
 struct MatchCard: View {
     let match: User
+    let matchId: String
+    @State private var hasNewActivity: Bool = false
+    @State private var isNewMatch: Bool = false
     
     var body: some View {
         HStack(spacing: 16) {
@@ -122,6 +129,14 @@ struct MatchCard: View {
                 }
                 .frame(width: 80, height: 80)
                 .clipShape(RoundedRectangle(cornerRadius: 25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 25)
+                        .strokeBorder(
+                            hasNewActivity ? Color.red :
+                            isNewMatch ? Color.green : .clear,
+                            lineWidth: 3
+                        )
+                )
                 .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
             }
             
@@ -160,6 +175,38 @@ struct MatchCard: View {
                 .fill(Color.white)
                 .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
         )
+        .task {
+            // Check activity status
+            do {
+                        let matchDoc = try await Firestore.firestore()
+                            .collection("matches")
+                            .document(matchId)
+                            .getDocument()
+                        
+                        if let data = matchDoc.data(),
+                           let viewed = data["viewed"] as? [String: Timestamp?],
+                           let lastActivity = data["lastActivity"] as? Timestamp {
+                            
+                            let currentUserId = Auth.auth().currentUser?.uid ?? ""
+                            
+                            // Fixed optional handling
+                            let lastViewedDate: Date
+                            if let viewedTimestamp = viewed[currentUserId] ?? nil {
+                                lastViewedDate = viewedTimestamp.dateValue()
+                            } else {
+                                lastViewedDate = Date(timeIntervalSince1970: 0)
+                            }
+                            
+                            // If never viewed, it's a new match
+                            isNewMatch = lastViewedDate == Date(timeIntervalSince1970: 0)
+                            
+                            // If there's activity after last view, show red circle
+                            hasNewActivity = !isNewMatch && lastActivity.dateValue() > lastViewedDate
+                        }
+                    } catch {
+                print("Error fetching match status: \(error)")
+            }
+        }
     }
 }
 

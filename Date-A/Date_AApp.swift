@@ -1,4 +1,3 @@
-// Date_AApp.swift
 import SwiftUI
 import FirebaseCore
 import FirebaseMessaging
@@ -9,13 +8,14 @@ import Photos
 struct Date_AApp: App {
     @StateObject private var model = ContentModel()
     
-    // Add this to handle notifications
     class AppDelegate: NSObject, UIApplicationDelegate {
         let gcmMessageIDKey = "gcm.message_id"
         
         func application(_ application: UIApplication,
                         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+            print("🚀 AppDelegate didFinishLaunching")
             
+            // Set messaging delegate before requesting permissions
             Messaging.messaging().delegate = self
             
             // Request permission for notifications
@@ -24,28 +24,27 @@ struct Date_AApp: App {
             let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
             UNUserNotificationCenter.current().requestAuthorization(
                 options: authOptions,
-                completionHandler: { _, _ in }
+                completionHandler: { granted, error in
+                    print("🔔 Notification permission granted: \(granted)")
+                    if let error = error {
+                        print("❌ Notification permission error: \(error)")
+                    }
+                }
             )
             
             application.registerForRemoteNotifications()
-            
             return true
         }
         
-        // Handle device token
         func application(_ application: UIApplication,
                         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+            print("📱 Received device token")
             Messaging.messaging().apnsToken = deviceToken
-        }
-        
-        func application(_ application: UIApplication,
-                        didFailToRegisterForRemoteNotificationsWithError error: Error) {
-            print("Failed to register for notifications: \(error.localizedDescription)")
         }
     }
     
-    // Add Firebase Messaging delegate
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
     init() {
         FirebaseApp.configure()
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -54,11 +53,7 @@ struct Date_AApp: App {
     
     var body: some Scene {
         WindowGroup {
-            
-           
             NavigationView {
-                
-                // Add this
                 Group {
                     if let user = model.currentUser {
                         HomeView()
@@ -71,50 +66,49 @@ struct Date_AApp: App {
                     }
                 }
             }
-            .onAppear {
-                model.checkAuthStatus()
-            }
-            
-            
         }
     }
-    
 }
+
+// MARK: - MessagingDelegate
 extension Date_AApp.AppDelegate: MessagingDelegate {
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        let tokenDict = ["token": fcmToken ?? ""]
-        NotificationCenter.default.post(
-            name: Notification.Name("FCMToken"),
-            object: nil,
-            userInfo: tokenDict)
+        print("⭐️ Firebase registration token received: \(String(describing: fcmToken))")
+        
+        if let token = fcmToken {
+            let tokenDict = ["token": token]
+            NotificationCenter.default.post(
+                name: Notification.Name("FCMToken"),
+                object: nil,
+                userInfo: tokenDict)
+        }
     }
 }
 
 // MARK: - UNUserNotificationCenterDelegate
 extension Date_AApp.AppDelegate: UNUserNotificationCenterDelegate {
-    // Receive displayed notifications for iOS 10 or later
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                               willPresent notification: UNNotification,
                               withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions)
                               -> Void) {
         let userInfo = notification.request.content.userInfo
+        print("📬 Received notification while app in foreground")
         
         if let messageID = userInfo[gcmMessageIDKey] {
-            print("Message ID: \(messageID)")
+            print("📨 Message ID: \(messageID)")
         }
         
-        // Show notification banner even when app is in foreground
         completionHandler([[.banner, .badge, .sound]])
     }
     
-    // Handle notification response
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                               didReceive response: UNNotificationResponse,
                               withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
+        print("👆 User tapped notification")
         
         if let messageID = userInfo[gcmMessageIDKey] {
-            print("Message ID: \(messageID)")
+            print("📨 Message ID: \(messageID)")
         }
         
         completionHandler()
