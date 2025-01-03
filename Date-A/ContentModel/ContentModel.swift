@@ -21,7 +21,10 @@ class ContentModel: NSObject, ObservableObject {
     @Published var isLoadingProfiles = false
         
     private var profileQueue: [User] = []
-    private var lastFetchedUserId: String?
+    var lastFetchedUserId: String?
+    
+    
+    @Published private var preloadedStacks: [Int: [User]] = [:]
     
     
     
@@ -58,25 +61,27 @@ class ContentModel: NSObject, ObservableObject {
                                                  object: nil)
         }
 
+    @Published var hasMoreProfilesToFetch = true
+    
+    @Published var hasReachedEnd = false
     
     @Published var moonSliderLevel: Int = 2 {
             didSet {
-                print("🌙 Moon slider level changed to: \(moonSliderLevel)")
-                // Clear current profile stack since they might not match new filter
-                Task {
-                    await MainActor.run {
-                        // Clear the stack
-                        profileStack.removeAll()
-                        // Reset pagination
-                        lastFetchedUserId = nil
-                        // Fetch new profiles with new filter
-                        Task {
-                            await fetchProfiles()
-                        }
-                    }
+                Task { @MainActor in
+                    // Reset states for new moon level
+                    self.lastFetchedUserId = nil
+                    self.hasReachedEnd = false
+                    self.isLoadingProfiles = false
+                    
+                    // Clear current stack
+                    profileStack.removeAll()
+                    
+                    // Start fresh fetch for new level
+                    await fetchProfiles()
                 }
             }
         }
+
     
     @objc private func updateFCMToken(_ notification: Notification) {
         print("📱 updateFCMToken called in ContentModel")
@@ -104,12 +109,24 @@ class ContentModel: NSObject, ObservableObject {
     }
     
     func startFetchingProfiles() {
-            Task { await fetchProfiles() }
+            Task { @MainActor in
+                self.lastFetchedUserId = nil
+                self.hasReachedEnd = false
+                await fetchProfiles()
+            }
+        }
+    
+    func fetchMoreProfilesIfNeeded() {
+            Task {
+                if profileStack.count < 3 && !hasReachedEnd && !isLoadingProfiles {
+                    await fetchProfiles()
+                }
+            }
         }
         
     @MainActor
         private func fetchProfiles() async {
-            guard !isLoadingProfiles else { return }
+            guard !isLoadingProfiles, !hasReachedEnd else { return }
             isLoadingProfiles = true
             
             do {
@@ -119,6 +136,7 @@ class ContentModel: NSObject, ObservableObject {
                     return
                 }
                 
+                // Get base filters
                 let dislikedDocs = try await db.collection("users")
                     .document(currentUserId)
                     .collection("dislikes")
@@ -132,6 +150,7 @@ class ContentModel: NSObject, ObservableObject {
                 let dislikedIds = dislikedDocs.documents.map { $0.documentID }
                 let likedIds = likedDocs.documents.map { $0.documentID }
                 
+                // Build query with user preferences
                 var query = db.collection("users")
                     .whereField("id", isNotEqualTo: currentUserId)
                     .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
@@ -140,6 +159,7 @@ class ContentModel: NSObject, ObservableObject {
                     .whereField("age", isLessThanOrEqualTo: currentUser.maxAgePreference)
                     .limit(to: stackSize)
                 
+                // Add pagination if not first fetch
                 if let lastUserId = self.lastFetchedUserId {
                     let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
                     query = query.start(afterDocument: lastDoc)
@@ -148,9 +168,16 @@ class ContentModel: NSObject, ObservableObject {
                 let querySnapshot = try await query.getDocuments()
                 let selectedRange = getMoonSliderRange()
                 
+                // Filter for moon level ratio
                 let newProfiles = try querySnapshot.documents.compactMap { doc -> User? in
                     guard let user = try? doc.data(as: User.self) else { return nil }
                     
+                    // Skip if already interacted
+                    if dislikedIds.contains(user.id) || likedIds.contains(user.id) {
+                        return nil
+                    }
+                    
+                    // Calculate ratio and check if fits current moon level
                     let totalInteractions = user.timesLiked + user.timesDisliked
                     let likeRatio = totalInteractions > 0 ?
                         (Double(user.timesLiked) / Double(totalInteractions)) * 100 :
@@ -160,26 +187,130 @@ class ContentModel: NSObject, ObservableObject {
                         return nil
                     }
                     
-                    if dislikedIds.contains(user.id) || likedIds.contains(user.id) {
-                        return nil
-                    }
-                    
                     return user
                 }
                 
-                self.lastFetchedUserId = querySnapshot.documents.last?.documentID
+                // Update pagination state
+                if querySnapshot.documents.isEmpty {
+                    // No more documents in Firestore
+                    hasReachedEnd = true
+                } else {
+                    lastFetchedUserId = querySnapshot.documents.last?.documentID
+                }
                 
                 await MainActor.run {
-                    self.profileStack = newProfiles
-                    self.currentProfileIndex = 0
-                    self.isLoadingProfiles = false
+                    // Append new profiles to stack
+                    if profileStack.isEmpty {
+                        profileStack = newProfiles
+                    } else {
+                        profileStack.append(contentsOf: newProfiles)
+                    }
+                    
+                    isLoadingProfiles = false
+                    
+                    // If we got no new profiles but there might be more, try next batch
+                    if newProfiles.isEmpty && !hasReachedEnd {
+                        Task {
+                            await fetchProfiles()
+                        }
+                    }
                 }
                 
             } catch {
                 await MainActor.run {
-                    self.isLoadingProfiles = false
+                    isLoadingProfiles = false
+                    print("Error fetching profiles: \(error)")
                 }
             }
+        }
+
+    
+    
+    private func fetchProfilesForLevel(_ level: Int) async throws -> [User] {
+        guard let currentUserId = Auth.auth().currentUser?.uid,
+              let currentUser = self.currentUser else {
+            return []
+        }
+        
+        let dislikedDocs = try await db.collection("users")
+            .document(currentUserId)
+            .collection("dislikes")
+            .getDocuments()
+        
+        let likedDocs = try await db.collection("users")
+            .document(currentUserId)
+            .collection("likes_sent")
+            .getDocuments()
+        
+        let dislikedIds = dislikedDocs.documents.map { $0.documentID }
+        let likedIds = likedDocs.documents.map { $0.documentID }
+        
+        var query = db.collection("users")
+            .whereField("id", isNotEqualTo: currentUserId)
+            .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
+            .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
+            .whereField("age", isGreaterThanOrEqualTo: currentUser.minAgePreference)
+            .whereField("age", isLessThanOrEqualTo: currentUser.maxAgePreference)
+            .limit(to: stackSize)
+        
+        if let lastUserId = self.lastFetchedUserId {
+            let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
+            query = query.start(afterDocument: lastDoc)
+        }
+        
+        let querySnapshot = try await query.getDocuments()
+        let selectedRange = getMoonSliderRangeForLevel(level)  // Note: using passed level parameter
+        
+        let profiles = try querySnapshot.documents.compactMap { doc -> User? in
+            guard let user = try? doc.data(as: User.self) else { return nil }
+            
+            let totalInteractions = user.timesLiked + user.timesDisliked
+            let likeRatio = totalInteractions > 0 ?
+                (Double(user.timesLiked) / Double(totalInteractions)) * 100 :
+                50.0
+            
+            guard likeRatio >= Double(selectedRange.min) && likeRatio <= Double(selectedRange.max) else {
+                return nil
+            }
+            
+            if dislikedIds.contains(user.id) || likedIds.contains(user.id) {
+                return nil
+            }
+            
+            return user
+        }
+        
+        // Don't update lastFetchedUserId here since this is for preloading
+        return profiles
+    }
+        
+        // Function for preloading all other moon levels
+    private func preloadAllOtherLevels(currentLevel: Int) async {
+            let allOtherLevels = Array(0...4).filter { $0 != currentLevel }
+            
+            for level in allOtherLevels {
+                if preloadedStacks[level] == nil {
+                    do {
+                        // Reset pagination for each preload attempt
+                        self.lastFetchedUserId = nil
+                        let preloadedProfiles = try await fetchProfilesForLevel(level)
+                        
+                        if !preloadedProfiles.isEmpty {
+                            await MainActor.run {
+                                self.preloadedStacks[level] = preloadedProfiles
+                            }
+                        }
+                    } catch {
+                        print("Error preloading profiles for level \(level): \(error)")
+                    }
+                }
+            }
+        }
+        
+        private func getMoonSliderRangeForLevel(_ level: Int) -> (min: Int, max: Int) {
+            let min = level * 20
+            let max = min + 20
+            return (min, max)
         }
         
         @MainActor

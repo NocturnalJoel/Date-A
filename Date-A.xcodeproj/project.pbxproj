@@ -40,6 +40,7 @@
 		9FE7072A2D1F6A8F0092B22B /* DeleteAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE707292D1F6A8F0092B22B /* DeleteAccountView.swift */; };
 		9FE7072C2D1FB5B70092B22B /* ManageMatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE7072B2D1FB5B70092B22B /* ManageMatchView.swift */; };
 		9FE7072E2D1FC4410092B22B /* RatingPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE7072D2D1FC4410092B22B /* RatingPopupView.swift */; };
+		9FE707332D27E63B0092B22B /* ProfileCardPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE707322D27E63B0092B22B /* ProfileCardPlaceholder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -90,6 +91,7 @@
 		9FE7072B2D1FB5B70092B22B /* ManageMatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageMatchView.swift; sourceTree = "<group>"; };
 		9FE7072D2D1FC4410092B22B /* RatingPopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPopupView.swift; sourceTree = "<group>"; };
 		9FE7072F2D21FC9A0092B22B /* Date-A.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Date-A.entitlements"; sourceTree = "<group>"; };
+		9FE707322D27E63B0092B22B /* ProfileCardPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileCardPlaceholder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -133,6 +135,7 @@
 				9F33FB142CE1AF3B004F3D37 /* MoonSliderView.swift */,
 				9F33FB0A2CE1AB3A004F3D37 /* ProfileCardView.swift */,
 				9F33FB122CE1AEE7004F3D37 /* ButtonsView.swift */,
+				9FE707322D27E63B0092B22B /* ProfileCardPlaceholder.swift */,
 			);
 			path = HomeView;
 			sourceTree = "<group>";
@@ -411,6 +414,7 @@
 				9F6E7F912CED92AB00AE4022 /* MessageBubble.swift in Sources */,
 				9F8CFA8B2CD55A4300C239BA /* Date_AApp.swift in Sources */,
 				9F33FB112CE1ADE6004F3D37 /* MatchesView.swift in Sources */,
+				9FE707332D27E63B0092B22B /* ProfileCardPlaceholder.swift in Sources */,
 				9F33FB092CE08BC8004F3D37 /* HomeView.swift in Sources */,
 				9F33FB132CE1AEE7004F3D37 /* ButtonsView.swift in Sources */,
 				9F33FB0B2CE1AB3A004F3D37 /* ProfileCardView.swift in Sources */,

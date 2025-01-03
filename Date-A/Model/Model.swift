@@ -1,7 +1,7 @@
 // User.swift
 import Foundation
 
-struct User: Identifiable, Codable, Equatable {
+struct User: Identifiable, Codable, Equatable, Hashable {
     var id: String
     var firstName: String
     var age: Int
@@ -21,6 +21,10 @@ struct User: Identifiable, Codable, Equatable {
         case female = "Female"
         case other = "Other"
     }
+    
+    func hash(into hasher: inout Hasher) {
+            hasher.combine(id)
+        }
 }
 
 struct Message: Identifiable, Codable {
