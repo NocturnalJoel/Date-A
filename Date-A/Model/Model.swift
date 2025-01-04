@@ -41,3 +41,7 @@ struct Message: Identifiable, Codable {
     }
 }
 
+enum StampType {
+    case like
+    case dislike
+}

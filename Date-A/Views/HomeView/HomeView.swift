@@ -9,6 +9,7 @@ struct HomeView: View {
     @EnvironmentObject var model: ContentModel
     @State private var matchedUser: User?
     @State private var showMatchAnimation = false
+    @State private var stampType: StampType?
     
     var body: some View {
         NavigationStack {
@@ -24,9 +25,10 @@ struct HomeView: View {
                 ZStack {
                     if !model.profileStack.isEmpty {
                         ForEach(Array(model.profileStack.prefix(2).enumerated().reversed()), id: \.element.id) { index, user in
-                            ProfileCardView(user: user)
+                            ProfileCardView(user: user, stampType: $stampType)
                                 .opacity(index == 0 ? 1 : 0.05)
                                 .background(Color(.systemBackground))
+                              
                         }
                     } else {
                         if model.isLoadingProfiles {
@@ -62,7 +64,9 @@ struct HomeView: View {
                 
                 Spacer()
                 
-                ButtonsView(showMatchAnimation: $showMatchAnimation, matchedUser: $matchedUser)
+                ButtonsView(showMatchAnimation: $showMatchAnimation,
+                            matchedUser: $matchedUser,
+                            stampType: $stampType)
                     .environmentObject(model)
             }
             .navigationBarHidden(true)

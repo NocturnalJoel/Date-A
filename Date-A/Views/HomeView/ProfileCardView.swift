@@ -5,6 +5,7 @@ struct ProfileCardView: View {
     @State private var currentIndex = 0
     @State private var hasSharedApp = false
     @State private var showShareSheet = false
+    @Binding var stampType: StampType?
     
     @EnvironmentObject var model: ContentModel
     
@@ -13,6 +14,8 @@ struct ProfileCardView: View {
         guard total > 0 else { return 0 }
         return (Double(user.timesLiked) / Double(total)) * 100
     }
+    
+   
     
     var body: some View {
         ZStack {
@@ -121,6 +124,19 @@ struct ProfileCardView: View {
                 }
                 .padding()
             }
+            
+            if let stamp = stampType {
+                            Circle()
+                                .stroke(stamp == .like ? Color.green : Color.red, lineWidth: 8)
+                                .frame(width: 120, height: 120)
+                                .overlay(
+                                    Image(systemName: stamp == .like ? "heart.fill" : "xmark")
+                                        .font(.system(size: 60))
+                                        .foregroundColor(stamp == .like ? .green : .red)
+                                )
+                                .opacity(0.8)
+                                .transition(.scale)
+                        }
         }
         .frame(width: 400, height: 500)
         .clipShape(RoundedRectangle(cornerRadius: 20))

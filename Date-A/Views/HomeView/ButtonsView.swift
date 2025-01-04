@@ -8,6 +8,7 @@ struct ButtonsView: View {
     @State private var leftButtonColor = Color.white
     @State private var rightButtonColor = Color.white
     @Binding var matchedUser: User?
+    @Binding var stampType: StampType?
 
     
     private func handleMatch() async {
@@ -25,14 +26,21 @@ struct ButtonsView: View {
                                 
                                 guard !model.profileStack.isEmpty else { return }
                                 let topProfile = model.profileStack[0]
+                
+                withAnimation(.spring()) {
+                                    stampType = .dislike
+                                }
                                 
-                                Task {
-                                    do {
-                                        try await model.dislikeUser(topProfile)
-                                    } catch {
-                                        print("Like error: \(error)")
-                                        likeError = error
-                                        showError = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    Task {
+                                        do {
+                                            try await model.dislikeUser(topProfile)
+                                            stampType = nil  // Reset stamp
+                                        } catch {
+                                            print("Dislike error: \(error)")
+                                            likeError = error
+                                            showError = true
+                                        }
                                     }
                                 }
             }) {
@@ -58,24 +66,38 @@ struct ButtonsView: View {
                                 
                                 guard !model.profileStack.isEmpty else { return }
                                 let topProfile = model.profileStack[0]
-                                
-                Task {
-                                    do {
-                                        try await model.likeUser(topProfile)
-                                        let oldMatchCount = model.matches.count
-                                        try await model.fetchMatches()
-                                        if model.matches.count > oldMatchCount {
-                                            await MainActor.run {
-                                                matchedUser = topProfile  // Set the matched user
-                                                showMatchAnimation = true
-                                            }
-                                        }
-                                    } catch {
-                                        print("Like error: \(error)")
-                                        likeError = error
-                                        showError = true
-                                    }
+                withAnimation(.spring()) {
+                                    stampType = .like
                                 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    Task {
+                        do {
+                            try await model.likeUser(topProfile)
+                            
+                            let oldMatchCount = model.matches.count
+                            
+                            try await model.fetchMatches()
+                            
+                            if model.matches.count > oldMatchCount {
+                                await MainActor.run {
+                                    matchedUser = topProfile
+                                    showMatchAnimation = true
+                                }
+                            }
+                            
+                            
+                            // Reset stamp
+                            
+                            stampType = nil
+                        } catch {
+                            print("Like error: \(error)")
+                            likeError = error
+                            showError = true
+                        }
+                        
+                    }
+                }
+                
             }) {
                 ZStack {
                     Circle()

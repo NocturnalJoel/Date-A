@@ -2,6 +2,133 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 
+
+
+struct ImageGalleryView: View {
+    let urls: [String]
+    @Binding var isPresented: Bool
+    @State private var selectedIndex: Int = 0
+    @GestureState private var dragOffset: CGFloat = 0
+    @EnvironmentObject var model: ContentModel
+    @State private var cachedImages: [Int: UIImage] = [:]
+    
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            // Black background
+            Color.black.ignoresSafeArea()
+            
+            // Image gallery
+            TabView(selection: $selectedIndex) {
+                ForEach(Array(urls.enumerated()), id: \.0) { index, url in
+                    ZStack {
+                        if let image = cachedImages[index] {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .tag(index)
+                                .modifier(ImageModifier())
+                        } else {
+                            Color.gray.opacity(0.3)
+                                .task {
+                                    await loadImage(url: url, forIndex: index)
+                                }
+                        }
+                    }
+                }
+            }
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .automatic))
+            
+            // Close button
+            Button(action: {
+                withAnimation {
+                    isPresented = false
+                }
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundColor(.white)
+                    .background(Color.black.opacity(0.6))
+                    .clipShape(Circle())
+            }
+            .padding(.top, 16)
+            .padding(.trailing, 16)
+            .zIndex(2)
+        }
+        .task {
+            // Pre-load the first image if it's in the cache
+            if let url = urls.first,
+               let image = model.imageCache.object(forKey: url as NSString) {
+                cachedImages[0] = image
+            }
+        }
+    }
+    
+    private func loadImage(url: String, forIndex index: Int) async {
+        // First check the cache
+        if let cachedImage = model.imageCache.object(forKey: url as NSString) {
+            cachedImages[index] = cachedImage
+            return
+        }
+        
+        guard let imageUrl = URL(string: url) else { return }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: imageUrl)
+            if let image = UIImage(data: data) {
+                cachedImages[index] = image
+                model.imageCache.setObject(image, forKey: url as NSString)
+            }
+        } catch {
+            print("Error loading image: \(error)")
+        }
+    }
+}
+
+// ImageModifier for zoom functionality
+struct ImageModifier: ViewModifier {
+    @State var scale: CGFloat = 1.0
+    @State var lastScale: CGFloat = 1.0
+    
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(scale)
+            .gesture(MagnificationGesture()
+                .onChanged { value in
+                    let delta = value / lastScale
+                    lastScale = value
+                    scale = scale * delta
+                }
+                .onEnded { value in
+                    lastScale = 1.0
+                    if scale < 1.0 {
+                        withAnimation {
+                            scale = 1.0
+                        }
+                    } else if scale > 3.0 {
+                        withAnimation {
+                            scale = 3.0
+                        }
+                    }
+                }
+            )
+            .gesture(TapGesture(count: 2).onEnded {
+                if scale > 1.0 {
+                    withAnimation {
+                        scale = 1.0
+                    }
+                } else {
+                    withAnimation {
+                        scale = 2.0
+                    }
+                }
+            })
+    }
+}
+
+// ChatView.swift
+import SwiftUI
+import FirebaseAuth
+import FirebaseFirestore
+
 struct ChatView: View {
     let matchedUser: User
     let matchId: String
@@ -12,6 +139,8 @@ struct ChatView: View {
     @State private var isLoading = false
     @FocusState private var isFocused: Bool
     @State private var shouldPopToRoot = false
+    @State private var cachedImage: UIImage?
+    @State private var showingGallery = false
     
     @State private var showingManageSheet = false
     
@@ -29,15 +158,30 @@ struct ChatView: View {
                 .buttonStyle(.plain)
                 
                 if let imageURL = matchedUser.pictureURLs.first {
-                    AsyncImage(url: URL(string: imageURL)) { image in
-                        image
+                    if let image = cachedImage {
+                        Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
-                    } placeholder: {
+                            .frame(width: 40, height: 40)
+                            .clipShape(Circle())
+                            .onTapGesture {
+                                showingGallery = true
+                            }
+                    } else {
                         Color.gray.opacity(0.1)
+                            .frame(width: 40, height: 40)
+                            .clipShape(Circle())
+                            .task {
+                                // Fallback loading if somehow the image wasn't pre-fetched
+                                if let url = URL(string: imageURL),
+                                   let (data, _) = try? await URLSession.shared.data(from: url),
+                                   let loadedImage = UIImage(data: data) {
+                                    cachedImage = loadedImage
+                                    // Store in cache for future use
+                                    model.imageCache.setObject(loadedImage, forKey: imageURL as NSString)
+                                }
+                            }
                     }
-                    .frame(width: 40, height: 40)
-                    .clipShape(Circle())
                 }
                 
                 Text(matchedUser.firstName)
@@ -46,10 +190,10 @@ struct ChatView: View {
                 
                 Spacer()
                 
-                Button{
+                Button {
                     showingManageSheet = true
-                }label:{
-                    ZStack{
+                } label: {
+                    ZStack {
                         Capsule()
                             .foregroundColor(Color.black.opacity(0.5))
                         Text("Manage")
@@ -103,26 +247,38 @@ struct ChatView: View {
         }
         .navigationBarHidden(true)
         .task {
+            // Try to get cached image first
+            if let imageURL = matchedUser.pictureURLs.first,
+               let image = model.imageCache.object(forKey: imageURL as NSString) {
+                cachedImage = image
+            }
+            
             isLoading = true
             try? await model.fetchMessages(for: matchId)
             
             try? await Firestore.firestore()
-                    .collection("matches")
-                    .document(matchId)
-                    .updateData([
-                        "viewed.\(Auth.auth().currentUser?.uid ?? "")": FieldValue.serverTimestamp()
-                    ])
-            
+                .collection("matches")
+                .document(matchId)
+                .updateData([
+                    "viewed.\(Auth.auth().currentUser?.uid ?? "")": FieldValue.serverTimestamp()
+                ])
             
             isLoading = false
         }
+        .fullScreenCover(isPresented: $showingGallery) {
+            ImageGalleryView(
+                urls: matchedUser.pictureURLs,
+                isPresented: $showingGallery
+            )
+            .environmentObject(model)
+        }
         .sheet(isPresented: $showingManageSheet) {
-                    ManageMatchView(shouldPopToRoot: $shouldPopToRoot, matchId: matchId)
-                }
-                .onChange(of: shouldPopToRoot) { newValue in
-                    if newValue {
-                        dismiss()
-                    }
-                }
+            ManageMatchView(shouldPopToRoot: $shouldPopToRoot, matchId: matchId)
+        }
+        .onChange(of: shouldPopToRoot) { newValue in
+            if newValue {
+                dismiss()
+            }
+        }
     }
 }

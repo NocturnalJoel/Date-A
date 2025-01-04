@@ -106,38 +106,59 @@ struct MatchesView: View {
 
 // Extracted match card component for better organization
 struct MatchCard: View {
+    @EnvironmentObject var model: ContentModel
     let match: User
     let matchId: String
     @State private var hasNewActivity: Bool = false
     @State private var isNewMatch: Bool = false
+    @State private var image: UIImage?
     
     var body: some View {
         HStack(spacing: 16) {
             // Profile Image
             if let imageURL = match.pictureURLs.first {
-                AsyncImage(url: URL(string: imageURL)) { image in
-                    image
+                if let cachedImage = image {
+                    Image(uiImage: cachedImage)
                         .resizable()
                         .scaledToFill()
-                } placeholder: {
+                        .frame(width: 80, height: 80)
+                        .clipShape(RoundedRectangle(cornerRadius: 25))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 25)
+                                .strokeBorder(
+                                    hasNewActivity ? Color.red :
+                                    isNewMatch ? Color.green : .clear,
+                                    lineWidth: 7
+                                )
+                        )
+                        .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+                } else {
                     Color.gray.opacity(0.1)
                         .overlay(
                             Image(systemName: "person.fill")
                                 .font(.system(size: 30))
                                 .foregroundColor(.gray)
                         )
-                }
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 25))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 25)
-                        .strokeBorder(
-                            hasNewActivity ? Color.red :
-                            isNewMatch ? Color.green : .clear,
-                            lineWidth: 7
+                        .frame(width: 80, height: 80)
+                        .clipShape(RoundedRectangle(cornerRadius: 25))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 25)
+                                .strokeBorder(
+                                    hasNewActivity ? Color.red :
+                                    isNewMatch ? Color.green : .clear,
+                                    lineWidth: 7
+                                )
                         )
-                )
-                .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+                        .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+                        .task {
+                            // Fallback loading if somehow the image wasn't pre-fetched
+                            if let url = URL(string: imageURL),
+                               let (data, _) = try? await URLSession.shared.data(from: url),
+                               let loadedImage = UIImage(data: data) {
+                                image = loadedImage
+                            }
+                        }
+                }
             }
             
             VStack(alignment: .leading, spacing: 6) {
@@ -175,35 +196,42 @@ struct MatchCard: View {
                 .fill(Color.white)
                 .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
         )
+        .onAppear {
+            // Try to get cached image on appear
+            if let imageURL = match.pictureURLs.first,
+               let cachedImage = model.imageCache.object(forKey: imageURL as NSString) {
+                image = cachedImage
+            }
+        }
         .task {
             // Check activity status
             do {
-                        let matchDoc = try await Firestore.firestore()
-                            .collection("matches")
-                            .document(matchId)
-                            .getDocument()
-                        
-                        if let data = matchDoc.data(),
-                           let viewed = data["viewed"] as? [String: Timestamp?],
-                           let lastActivity = data["lastActivity"] as? Timestamp {
-                            
-                            let currentUserId = Auth.auth().currentUser?.uid ?? ""
-                            
-                            // Fixed optional handling
-                            let lastViewedDate: Date
-                            if let viewedTimestamp = viewed[currentUserId] ?? nil {
-                                lastViewedDate = viewedTimestamp.dateValue()
-                            } else {
-                                lastViewedDate = Date(timeIntervalSince1970: 0)
-                            }
-                            
-                            // If never viewed, it's a new match
-                            isNewMatch = lastViewedDate == Date(timeIntervalSince1970: 0)
-                            
-                            // If there's activity after last view, show red circle
-                            hasNewActivity = !isNewMatch && lastActivity.dateValue() > lastViewedDate
-                        }
-                    } catch {
+                let matchDoc = try await Firestore.firestore()
+                    .collection("matches")
+                    .document(matchId)
+                    .getDocument()
+                
+                if let data = matchDoc.data(),
+                   let viewed = data["viewed"] as? [String: Timestamp?],
+                   let lastActivity = data["lastActivity"] as? Timestamp {
+                    
+                    let currentUserId = Auth.auth().currentUser?.uid ?? ""
+                    
+                    // Fixed optional handling
+                    let lastViewedDate: Date
+                    if let viewedTimestamp = viewed[currentUserId] ?? nil {
+                        lastViewedDate = viewedTimestamp.dateValue()
+                    } else {
+                        lastViewedDate = Date(timeIntervalSince1970: 0)
+                    }
+                    
+                    // If never viewed, it's a new match
+                    isNewMatch = lastViewedDate == Date(timeIntervalSince1970: 0)
+                    
+                    // If there's activity after last view, show red circle
+                    hasNewActivity = !isNewMatch && lastActivity.dateValue() > lastViewedDate
+                }
+            } catch {
                 print("Error fetching match status: \(error)")
             }
         }

@@ -108,6 +108,34 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
+     var imageCache: NSCache<NSString, UIImage> = {
+            let cache = NSCache<NSString, UIImage>()
+            cache.countLimit = 100 // Adjust based on your needs
+            return cache
+        }()
+        
+        // Add a function to pre-fetch images
+        private func preFetchMatchImages() async {
+            for match in matches {
+                guard let firstImageURL = match.pictureURLs.first,
+                      let url = URL(string: firstImageURL) else { continue }
+                
+                // Skip if already cached
+                if imageCache.object(forKey: firstImageURL as NSString) != nil {
+                    continue
+                }
+                
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    if let image = UIImage(data: data) {
+                        imageCache.setObject(image, forKey: firstImageURL as NSString)
+                    }
+                } catch {
+                    print("Error pre-fetching image: \(error)")
+                }
+            }
+        }
+    
     func startFetchingProfiles() {
             Task { @MainActor in
                 self.lastFetchedUserId = nil
@@ -786,6 +814,7 @@ class ContentModel: NSObject, ObservableObject {
         await MainActor.run {
             self.matches = fetchedUsers
         }
+        await preFetchMatchImages()
     }
     
     func sendMessage(to matchId: String, text: String) async throws {
