@@ -41,6 +41,7 @@
 		9FE7072C2D1FB5B70092B22B /* ManageMatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE7072B2D1FB5B70092B22B /* ManageMatchView.swift */; };
 		9FE7072E2D1FC4410092B22B /* RatingPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE7072D2D1FC4410092B22B /* RatingPopupView.swift */; };
 		9FE707332D27E63B0092B22B /* ProfileCardPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE707322D27E63B0092B22B /* ProfileCardPlaceholder.swift */; };
+		9FE707372D34C72E0092B22B /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE707362D34C72E0092B22B /* OnboardingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -92,6 +93,7 @@
 		9FE7072D2D1FC4410092B22B /* RatingPopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPopupView.swift; sourceTree = "<group>"; };
 		9FE7072F2D21FC9A0092B22B /* Date-A.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Date-A.entitlements"; sourceTree = "<group>"; };
 		9FE707322D27E63B0092B22B /* ProfileCardPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileCardPlaceholder.swift; sourceTree = "<group>"; };
+		9FE707362D34C72E0092B22B /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -166,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				9F6E7F9A2CFCED7500AE4022 /* FirstView.swift */,
+				9FE707362D34C72E0092B22B /* OnboardingView.swift */,
 				9F6E7FA02CFCF33000AE4022 /* CreateAccountView.swift */,
 				9F6E7F9E2CFCF32000AE4022 /* SignInView.swift */,
 			);
@@ -411,6 +414,7 @@
 				9FC207DC2CD858E200FF3E21 /* ContentModel.swift in Sources */,
 				9F6E7F932CED92D300AE4022 /* ChatView.swift in Sources */,
 				9F33FB192CE1BCE1004F3D37 /* RangeSlider.swift in Sources */,
+				9FE707372D34C72E0092B22B /* OnboardingView.swift in Sources */,
 				9F6E7F912CED92AB00AE4022 /* MessageBubble.swift in Sources */,
 				9F8CFA8B2CD55A4300C239BA /* Date_AApp.swift in Sources */,
 				9F33FB112CE1ADE6004F3D37 /* MatchesView.swift in Sources */,

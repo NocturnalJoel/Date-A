@@ -61,11 +61,7 @@ struct FirstView: View {
             SignInView()
         }
         .fullScreenCover(isPresented: $showCreateAccount) {
-            CreateAccountView()
+            OnboardingView(isPresented: $showCreateAccount)
         }
     }
-}
-
-#Preview {
-    FirstView()
 }

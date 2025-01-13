@@ -18,66 +18,21 @@ struct SettingsView: View {
     @State private var showDeleteAccount = false
     
     private func refreshUserData() async {
-       
-        do {
-            try await model.refreshCurrentUser()
-            if let user = model.currentUser {
-                selectedPreference = user.genderPreference
-                minAge = Double(user.minAgePreference)
-                maxAge = Double(user.maxAgePreference)
-            }
-        } catch {
-            print("❌ Error refreshing user data: \(error.localizedDescription)")
-        }
-        
-    }
+           do {
+               if let user = model.currentUser {
+                   selectedPreference = user.genderPreference
+                   minAge = Double(user.minAgePreference)
+                   maxAge = Double(user.maxAgePreference)
+                   if selectedImages.isEmpty {
+                       selectedImages = model.currentUserImages
+                   }
+               }
+           } catch {
+               print("❌ Error refreshing user data: \(error.localizedDescription)")
+           }
+       }
     
-    private func loadCurrentUserPhotos() {
-        guard let user = model.currentUser else {
-            print("⚠️ No current user found")
-            return
-        }
-        
-        isPhotosLoading = true
-        print("📸 Loading photos for user: \(user.id)")
-        print("📸 URLs to load: \(user.pictureURLs)")
-        
-        Task {
-            var images: [UIImage] = []
-            for urlString in user.pictureURLs {
-                do {
-                    guard let url = URL(string: urlString) else {
-                        print("⚠️ Invalid URL: \(urlString)")
-                        continue
-                    }
-                    
-                    let (data, response) = try await URLSession.shared.data(from: url)
-                    
-                    guard let httpResponse = response as? HTTPURLResponse,
-                          httpResponse.statusCode == 200 else {
-                        print("⚠️ Bad response for URL: \(urlString)")
-                        continue
-                    }
-                    
-                    guard let image = UIImage(data: data) else {
-                        print("⚠️ Couldn't create image from data: \(urlString)")
-                        continue
-                    }
-                    
-                    print("✅ Successfully loaded image from: \(urlString)")
-                    images.append(image)
-                } catch {
-                    print("❌ Error loading image: \(error.localizedDescription)")
-                }
-            }
-            
-            await MainActor.run {
-                print("📱 Setting \(images.count) images to selectedImages")
-                selectedImages = images
-                isPhotosLoading = false
-            }
-        }
-    }
+    
     
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -104,11 +59,11 @@ struct SettingsView: View {
                             .font(.system(size: 17, weight: .semibold, design: .rounded))
                             .foregroundColor(.gray)
                         
-                        if model.permissionGranted && !selectedImages.isEmpty {
+                        if model.permissionGranted {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
-                                    ForEach(selectedImages.indices, id: \.self) { index in
-                                        Image(uiImage: selectedImages[index])
+                                    ForEach(selectedImages.isEmpty ? model.currentUserImages.indices : selectedImages.indices, id: \.self) { index in
+                                        Image(uiImage: selectedImages.isEmpty ? model.currentUserImages[index] : selectedImages[index])
                                             .resizable()
                                             .scaledToFill()
                                             .frame(width: 120, height: 160)
@@ -117,9 +72,7 @@ struct SettingsView: View {
                                 }
                             }
                             .frame(height: 160)
-                        }
-                        
-                        if model.permissionGranted {
+                            
                             PhotosPicker(
                                 selection: $selectedItems,
                                 maxSelectionCount: 6,
@@ -127,7 +80,7 @@ struct SettingsView: View {
                             ) {
                                 HStack {
                                     Image(systemName: "photo.on.rectangle.angled")
-                                    Text(selectedImages.isEmpty ? "Add Photos" : "Edit Photos")
+                                    Text("Edit Photos")
                                 }
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundColor(.white)
@@ -207,11 +160,9 @@ struct SettingsView: View {
                             .foregroundColor(.gray)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         
-                        
-                            CircularProgressView(percentage: Double(calculateRatio()))
-                                .frame(maxWidth: .infinity)
-                                .padding(.top, 16)
-                        
+                        CircularProgressView(percentage: Double(calculateRatio()))
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 16)
                     }
                 }
                 
@@ -226,7 +177,7 @@ struct SettingsView: View {
                                 maxAge: maxAge,
                                 genderPreference: selectedPreference
                             )
-                            await refreshUserData() // Refresh after saving
+                            await refreshUserData()
                             isSaving = false
                         } catch {
                             isSaving = false
@@ -283,7 +234,6 @@ struct SettingsView: View {
                     DeleteAccountView()
                         .environmentObject(model)
                 }
-                
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
@@ -291,8 +241,10 @@ struct SettingsView: View {
         .navigationBarHidden(true)
         .onAppear {
             Task {
-                await refreshUserData() // First refresh the user data
-                loadCurrentUserPhotos() // Then load the photos
+                await refreshUserData()
+                if selectedImages.isEmpty {
+                    selectedImages = model.currentUserImages
+                }
             }
         }
         .onChange(of: selectedItems) { items in

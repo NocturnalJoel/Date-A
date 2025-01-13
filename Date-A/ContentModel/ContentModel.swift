@@ -15,6 +15,12 @@ class ContentModel: NSObject, ObservableObject {
     private let storage = Storage.storage()
     private let db = Firestore.firestore()
     
+    @Published var currentUserImages: [UIImage] = []
+    
+    
+    @Published var preloadedImages: [String: UIImage] = [:]
+    
+    
     //
     @Published var currentProfile: User?
     @Published var nextProfile: User?
@@ -66,21 +72,61 @@ class ContentModel: NSObject, ObservableObject {
     @Published var hasReachedEnd = false
     
     @Published var moonSliderLevel: Int = 2 {
-            didSet {
-                Task { @MainActor in
-                    // Reset states for new moon level
-                    self.lastFetchedUserId = nil
-                    self.hasReachedEnd = false
-                    self.isLoadingProfiles = false
+        didSet {
+            print("🌙 Moon level changed to: \(moonSliderLevel)")
+            Task { @MainActor in
+                print("📦 Current preloaded stacks: \(preloadedStacks.keys.map { "Level \($0): \(preloadedStacks[$0]?.count ?? 0) profiles" }.joined(separator: ", "))")
+                
+                // Reset states for new moon level
+                self.lastFetchedUserId = nil
+                self.hasReachedEnd = false
+                self.isLoadingProfiles = false
+                
+                // Clear current stack
+                profileStack.removeAll()
+                
+                // If we have preloaded profiles and their images for this level, use them
+                if let preloadedProfiles = preloadedStacks[moonSliderLevel] {
+                    print("✨ Found \(preloadedProfiles.count) preloaded profiles for level \(moonSliderLevel)")
                     
-                    // Clear current stack
-                    profileStack.removeAll()
+                    // Verify all images are preloaded
+                    let allImagesPreloaded = preloadedProfiles.allSatisfy { user in
+                        user.pictureURLs.allSatisfy { url in
+                            preloadedImages[url] != nil
+                        }
+                    }
                     
-                    // Start fresh fetch for new level
+                    if allImagesPreloaded {
+                        print("🖼️ All images are preloaded for level \(moonSliderLevel)")
+                        profileStack = preloadedProfiles
+                        preloadedStacks[moonSliderLevel] = nil
+                    } else {
+                        print("⚠️ Some images not preloaded, starting fresh fetch")
+                        await fetchProfiles()
+                    }
+                } else {
+                    print("🚀 Starting fresh fetch for level \(moonSliderLevel)")
                     await fetchProfiles()
                 }
+                
+                // Start preloading other levels
+                await preloadAllOtherLevels(currentLevel: moonSliderLevel)
             }
         }
+    }
+    
+    private var imagePreloadQueue: OperationQueue = {
+            let queue = OperationQueue()
+            queue.maxConcurrentOperationCount = 3 // Limit concurrent downloads
+            return queue
+        }()
+        
+        // Enhance existing image cache
+        var imageCache: NSCache<NSString, UIImage> = {
+            let cache = NSCache<NSString, UIImage>()
+            cache.countLimit = 200 // Increased to handle preloaded images
+            return cache
+        }()
 
     
     @objc private func updateFCMToken(_ notification: Notification) {
@@ -91,6 +137,62 @@ class ContentModel: NSObject, ObservableObject {
             // Don't try to update Firestore here - wait for explicit login
             print("💾 Token stored locally, waiting for user login")
         }
+    }
+    func preloadCurrentUserImages() async {
+        guard let user = currentUser else {
+            print("⚠️ No current user found")
+            return
+        }
+        
+        print("📸 Preloading images for user: \(user.id)")
+        print("📸 URLs to load: \(user.pictureURLs)")
+        
+        var images: [UIImage] = []
+        for urlString in user.pictureURLs {
+            do {
+                guard let url = URL(string: urlString) else {
+                    print("⚠️ Invalid URL: \(urlString)")
+                    continue
+                }
+                
+                let (data, response) = try await URLSession.shared.data(from: url)
+                
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else {
+                    print("⚠️ Bad response for URL: \(urlString)")
+                    continue
+                }
+                
+                guard let image = UIImage(data: data) else {
+                    print("⚠️ Couldn't create image from data: \(urlString)")
+                    continue
+                }
+                
+                print("✅ Successfully loaded image from: \(urlString)")
+                images.append(image)
+            } catch {
+                print("❌ Error loading image: \(error.localizedDescription)")
+            }
+        }
+        
+        await MainActor.run {
+            print("📱 Setting \(images.count) current user images")
+            self.currentUserImages = images
+        }
+    }
+    
+    func clearPreloadedImages() {
+        preloadedImages.removeAll()
+    }
+
+    func areImagesPreloaded(for user: User) -> Bool {
+        user.pictureURLs.allSatisfy { url in
+            preloadedImages[url] != nil
+        }
+    }
+
+    func getPreloadedImage(for url: String) -> UIImage? {
+        preloadedImages[url]
     }
 
     private func updateUserFCMToken(userId: String, token: String) async throws {
@@ -108,11 +210,7 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-     var imageCache: NSCache<NSString, UIImage> = {
-            let cache = NSCache<NSString, UIImage>()
-            cache.countLimit = 100 // Adjust based on your needs
-            return cache
-        }()
+     
         
         // Add a function to pre-fetch images
         private func preFetchMatchImages() async {
@@ -153,106 +251,135 @@ class ContentModel: NSObject, ObservableObject {
         }
         
     @MainActor
-        private func fetchProfiles() async {
-            guard !isLoadingProfiles, !hasReachedEnd else { return }
-            isLoadingProfiles = true
+    private func fetchProfiles() async {
+        guard !isLoadingProfiles, !hasReachedEnd else {
+            print("⚠️ Skipping fetch - isLoadingProfiles: \(isLoadingProfiles), hasReachedEnd: \(hasReachedEnd)")
+            return
+        }
+        
+        isLoadingProfiles = true
+        print("🎯 Starting profile fetch for moon level \(moonSliderLevel)")
+        
+        do {
+            guard let currentUserId = Auth.auth().currentUser?.uid,
+                  let currentUser = self.currentUser else {
+                print("❌ No current user found")
+                isLoadingProfiles = false
+                return
+            }
             
-            do {
-                guard let currentUserId = Auth.auth().currentUser?.uid,
-                      let currentUser = self.currentUser else {
+            // Get filters
+            let dislikedDocs = try await db.collection("users")
+                .document(currentUserId)
+                .collection("dislikes")
+                .getDocuments()
+            
+            let likedDocs = try await db.collection("users")
+                .document(currentUserId)
+                .collection("likes_sent")
+                .getDocuments()
+            
+            let dislikedIds = dislikedDocs.documents.map { $0.documentID }
+            let likedIds = likedDocs.documents.map { $0.documentID }
+            
+            print("🎭 Found \(dislikedIds.count) dislikes and \(likedIds.count) likes")
+            
+            // Build query
+            var query = db.collection("users")
+                .whereField("id", isNotEqualTo: currentUserId)
+                .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
+                .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
+                .whereField("age", isGreaterThanOrEqualTo: currentUser.minAgePreference)
+                .whereField("age", isLessThanOrEqualTo: currentUser.maxAgePreference)
+                .limit(to: stackSize)
+            
+            if let lastUserId = self.lastFetchedUserId {
+                print("📄 Paginating after user: \(lastUserId)")
+                let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
+                if lastDoc.exists {
+                    query = query.start(afterDocument: lastDoc)
+                } else {
+                    // If the last document doesn't exist anymore, we've reached the end
+                    hasReachedEnd = true
                     isLoadingProfiles = false
+                    print("🏁 Last document no longer exists, reached end")
                     return
                 }
+            }
+            
+            let querySnapshot = try await query.getDocuments()
+            print("📦 Received \(querySnapshot.documents.count) documents from Firestore")
+            
+            if querySnapshot.documents.isEmpty {
+                hasReachedEnd = true
+                isLoadingProfiles = false
+                print("🏁 No more documents, reached end")
+                return
+            }
+            
+            let selectedRange = getMoonSliderRange()
+            print("🌙 Filtering for ratio range: \(selectedRange.min)-\(selectedRange.max)")
+            
+            var uniqueProfiles = Set<User>()
+            for doc in querySnapshot.documents {
+                guard let user = try? doc.data(as: User.self) else { continue }
                 
-                // Get base filters
-                let dislikedDocs = try await db.collection("users")
-                    .document(currentUserId)
-                    .collection("dislikes")
-                    .getDocuments()
-                
-                let likedDocs = try await db.collection("users")
-                    .document(currentUserId)
-                    .collection("likes_sent")
-                    .getDocuments()
-                
-                let dislikedIds = dislikedDocs.documents.map { $0.documentID }
-                let likedIds = likedDocs.documents.map { $0.documentID }
-                
-                // Build query with user preferences
-                var query = db.collection("users")
-                    .whereField("id", isNotEqualTo: currentUserId)
-                    .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
-                    .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
-                    .whereField("age", isGreaterThanOrEqualTo: currentUser.minAgePreference)
-                    .whereField("age", isLessThanOrEqualTo: currentUser.maxAgePreference)
-                    .limit(to: stackSize)
-                
-                // Add pagination if not first fetch
-                if let lastUserId = self.lastFetchedUserId {
-                    let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
-                    query = query.start(afterDocument: lastDoc)
+                if dislikedIds.contains(user.id) ||
+                   likedIds.contains(user.id) ||
+                   profileStack.contains(where: { $0.id == user.id }) {
+                    print("👥 Skipping user \(user.id) - already interacted or in stack")
+                    continue
                 }
                 
-                let querySnapshot = try await query.getDocuments()
-                let selectedRange = getMoonSliderRange()
+                let totalInteractions = user.timesLiked + user.timesDisliked
+                let likeRatio = totalInteractions > 0 ?
+                    (Double(user.timesLiked) / Double(totalInteractions)) * 100 :
+                    50.0
                 
-                // Filter for moon level ratio
-                let newProfiles = try querySnapshot.documents.compactMap { doc -> User? in
-                    guard let user = try? doc.data(as: User.self) else { return nil }
-                    
-                    // Skip if already interacted
-                    if dislikedIds.contains(user.id) || likedIds.contains(user.id) {
-                        return nil
-                    }
-                    
-                    // Calculate ratio and check if fits current moon level
-                    let totalInteractions = user.timesLiked + user.timesDisliked
-                    let likeRatio = totalInteractions > 0 ?
-                        (Double(user.timesLiked) / Double(totalInteractions)) * 100 :
-                        50.0
-                    
-                    guard likeRatio >= Double(selectedRange.min) && likeRatio <= Double(selectedRange.max) else {
-                        return nil
-                    }
-                    
-                    return user
-                }
-                
-                // Update pagination state
-                if querySnapshot.documents.isEmpty {
-                    // No more documents in Firestore
-                    hasReachedEnd = true
+                if likeRatio >= Double(selectedRange.min) && likeRatio <= Double(selectedRange.max) {
+                    uniqueProfiles.insert(user)
                 } else {
-                    lastFetchedUserId = querySnapshot.documents.last?.documentID
-                }
-                
-                await MainActor.run {
-                    // Append new profiles to stack
-                    if profileStack.isEmpty {
-                        profileStack = newProfiles
-                    } else {
-                        profileStack.append(contentsOf: newProfiles)
-                    }
-                    
-                    isLoadingProfiles = false
-                    
-                    // If we got no new profiles but there might be more, try next batch
-                    if newProfiles.isEmpty && !hasReachedEnd {
-                        Task {
-                            await fetchProfiles()
-                        }
-                    }
-                }
-                
-            } catch {
-                await MainActor.run {
-                    isLoadingProfiles = false
-                    print("Error fetching profiles: \(error)")
+                    print("📊 User \(user.id) ratio (\(likeRatio)) outside range \(selectedRange.min)-\(selectedRange.max)")
                 }
             }
+            
+            // Update pagination with the actual last document
+            self.lastFetchedUserId = querySnapshot.documents.last?.documentID
+            print("📝 Updated last fetched ID to: \(self.lastFetchedUserId ?? "nil")")
+            
+            let newProfiles = Array(uniqueProfiles)
+            print("✨ Found \(newProfiles.count) new matching profiles")
+            
+            // Preload images
+            await preloadImagesForUsers(newProfiles)
+            print("🖼️ Preloaded images for new profiles")
+            
+            // Update UI
+            if profileStack.isEmpty {
+                profileStack = newProfiles
+                print("📚 Set new profiles as stack")
+            } else {
+                profileStack.append(contentsOf: newProfiles)
+                print("📚 Appended \(newProfiles.count) profiles to stack")
+            }
+            
+            isLoadingProfiles = false
+            
+            // If we found no new profiles and still have more to fetch, try next batch
+            if newProfiles.isEmpty && !querySnapshot.documents.isEmpty {
+                print("🔄 No new profiles in this batch, fetching next batch")
+                await fetchProfiles()
+            } else if newProfiles.isEmpty && querySnapshot.documents.isEmpty {
+                print("🏁 No more profiles to fetch")
+                hasReachedEnd = true
+            }
+            
+        } catch {
+            print("❌ Error fetching profiles: \(error)")
+            isLoadingProfiles = false
         }
+    }
 
-    
     
     private func fetchProfilesForLevel(_ level: Int) async throws -> [User] {
         guard let currentUserId = Auth.auth().currentUser?.uid,
@@ -287,7 +414,7 @@ class ContentModel: NSObject, ObservableObject {
         }
         
         let querySnapshot = try await query.getDocuments()
-        let selectedRange = getMoonSliderRangeForLevel(level)  // Note: using passed level parameter
+        let selectedRange = getMoonSliderRangeForLevel(level)
         
         let profiles = try querySnapshot.documents.compactMap { doc -> User? in
             guard let user = try? doc.data(as: User.self) else { return nil }
@@ -308,32 +435,80 @@ class ContentModel: NSObject, ObservableObject {
             return user
         }
         
-        // Don't update lastFetchedUserId here since this is for preloading
+        // Preload images for these profiles
+        await preloadImagesForUsers(profiles)
         return profiles
     }
+     func preloadImagesForUser(_ user: User) async {
+        for imageURL in user.pictureURLs {
+            // Skip if already preloaded
+            if preloadedImages[imageURL] != nil {
+                continue
+            }
+            
+            guard let url = URL(string: imageURL) else { continue }
+            
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                if let image = UIImage(data: data) {
+                    await MainActor.run {
+                        preloadedImages[imageURL] = image
+                    }
+                }
+            } catch {
+                print("Error preloading image: \(error)")
+            }
+        }
+    }
         
+        // Add function to preload images for multiple users
+    private func preloadImagesForUsers(_ users: [User]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for user in users {
+                group.addTask {
+                    await self.preloadImagesForUser(user)
+                }
+            }
+        }
+    }
         // Function for preloading all other moon levels
     private func preloadAllOtherLevels(currentLevel: Int) async {
-            let allOtherLevels = Array(0...4).filter { $0 != currentLevel }
-            
+        let allOtherLevels = Array(0...4).filter { $0 != currentLevel }
+        
+        await withTaskGroup(of: Void.self) { group in
             for level in allOtherLevels {
                 if preloadedStacks[level] == nil {
-                    do {
-                        // Reset pagination for each preload attempt
-                        self.lastFetchedUserId = nil
-                        let preloadedProfiles = try await fetchProfilesForLevel(level)
-                        
-                        if !preloadedProfiles.isEmpty {
-                            await MainActor.run {
-                                self.preloadedStacks[level] = preloadedProfiles
+                    group.addTask {
+                        do {
+                            print("🔄 Starting preload for level \(level)")
+                            self.lastFetchedUserId = nil
+                            let preloadedProfiles = try await self.fetchProfilesForLevel(level)
+                            
+                            if !preloadedProfiles.isEmpty {
+                                // Verify all images are preloaded
+                                let allImagesPreloaded = await MainActor.run {
+                                    preloadedProfiles.allSatisfy { user in
+                                        self.areImagesPreloaded(for: user)
+                                    }
+                                }
+                                
+                                if allImagesPreloaded {
+                                    await MainActor.run {
+                                        self.preloadedStacks[level] = preloadedProfiles
+                                        print("✅ Successfully preloaded level \(level) with \(preloadedProfiles.count) profiles")
+                                    }
+                                } else {
+                                    print("⚠️ Not all images were preloaded for level \(level)")
+                                }
                             }
+                        } catch {
+                            print("❌ Error preloading profiles for level \(level): \(error)")
                         }
-                    } catch {
-                        print("Error preloading profiles for level \(level): \(error)")
                     }
                 }
             }
         }
+    }
         
         private func getMoonSliderRangeForLevel(_ level: Int) -> (min: Int, max: Int) {
             let min = level * 20
@@ -914,6 +1089,7 @@ class ContentModel: NSObject, ObservableObject {
         await MainActor.run {
             self.currentUser = userData
         }
+        await preloadCurrentUserImages()
     }
     
     func deleteAccount() async throws {
@@ -1172,4 +1348,6 @@ class ContentModel: NSObject, ObservableObject {
             self.unmatchedProfiles = profiles ?? []
         }
     }
+    
+    
 }

@@ -23,18 +23,13 @@ struct HomeView: View {
                 Spacer()
                 
                 ZStack {
-                    if !model.profileStack.isEmpty {
-                        ForEach(Array(model.profileStack.prefix(2).enumerated().reversed()), id: \.element.id) { index, user in
-                            ProfileCardView(user: user, stampType: $stampType)
-                                .opacity(index == 0 ? 1 : 0.05)
-                                .background(Color(.systemBackground))
-                              
-                        }
-                    } else {
-                        if model.isLoadingProfiles {
-                            ProfileCardPlaceholder()
-                                .background(Color(.systemBackground))
-                        } else if model.hasReachedEnd {
+                    if model.isLoadingProfiles {
+                        // Show loading placeholder
+                        ProfileCardPlaceholder()
+                            .background(Color(.systemBackground))
+                    } else if model.profileStack.isEmpty {
+                        if model.hasReachedEnd {
+                            // Show empty state
                             VStack(spacing: 16) {
                                 Text("🌌")
                                     .font(.system(size: 150, weight: .bold))
@@ -51,6 +46,18 @@ struct HomeView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 20))
                             .shadow(radius: 5)
                             .padding()
+                        } else {
+                            // Show loading placeholder while fetching
+                            ProfileCardPlaceholder()
+                                .background(Color(.systemBackground))
+                        }
+                    } else {
+                        // Show profiles
+                        ForEach(Array(model.profileStack.prefix(2).enumerated().reversed()), id: \.element.id) { index, user in
+                            ProfileCardView(user: user, stampType: $stampType)
+                                .opacity(index == 0 ? 1 : 0.05)
+                                .background(Color(.systemBackground))
+                                .id("\(user.id)_\(index)")  // Ensure unique identification
                         }
                     }
                 }
@@ -58,6 +65,7 @@ struct HomeView: View {
                 .frame(height: 500)
                 .onChange(of: model.profileStack.count) { count in
                     if count < 3 {
+                        print("📊 Profile stack count dropped to \(count), fetching more")
                         model.fetchMoreProfilesIfNeeded()
                     }
                 }
@@ -81,10 +89,12 @@ struct HomeView: View {
                 model.startFetchingProfiles()
                 Task {
                     do {
+                        try await model.refreshCurrentUser()
                         await model.loadUnmatchedProfiles()
                         try await model.fetchMatches()
                     } catch {
                         print("Error fetching matches: \(error)")
+                        print("Error refreshing user data: \(error)")
                     }
                 }
             }

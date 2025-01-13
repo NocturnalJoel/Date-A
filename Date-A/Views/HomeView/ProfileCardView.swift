@@ -15,37 +15,52 @@ struct ProfileCardView: View {
         return (Double(user.timesLiked) / Double(total)) * 100
     }
     
-   
-    
     var body: some View {
         ZStack {
             // Image carousel
             TabView(selection: $currentIndex) {
                 ForEach(Array(user.pictureURLs.enumerated()), id: \.1) { index, url in
-                    AsyncImage(url: URL(string: url)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        case .failure(_):
-                            Image(systemName: "person.fill")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .padding()
-                                .foregroundColor(.orange)
-                        case .empty:
-                            Color.clear
-                        @unknown default:
-                            EmptyView()
+                    if let preloadedImage = model.getPreloadedImage(for: url) {
+                        // Use preloaded image
+                        Image(uiImage: preloadedImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .tag(index)
+                    } else {
+                        // Fallback to AsyncImage if not preloaded
+                        AsyncImage(url: URL(string: url)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            case .failure(_):
+                                Image(systemName: "person.fill")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .padding()
+                                    .foregroundColor(.orange)
+                            case .empty:
+                                Color.clear
+                            @unknown default:
+                                EmptyView()
+                            }
+                        }
+                        .tag(index)
+                        .onAppear {
+                            // Try to preload if not already loaded
+                            if !model.areImagesPreloaded(for: user) {
+                                Task {
+                                    await model.preloadImagesForUser(user)
+                                }
+                            }
                         }
                     }
-                    .tag(index)
                 }
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             
-            // Overlay gradient for better text visibility
+            // Rest of the view remains the same
             VStack {
                 LinearGradient(
                     gradient: Gradient(colors: [.clear, .black.opacity(0.1)]),
@@ -62,11 +77,10 @@ struct ProfileCardView: View {
             }
             .allowsHitTesting(false)
             
-            // Bottom overlay with user info and page indicators
+            // Bottom overlay with user info
             VStack {
                 Spacer()
                 VStack(spacing: 16) {
-                    // User info
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(user.firstName)
@@ -80,7 +94,6 @@ struct ProfileCardView: View {
                         }
                         Spacer()
                         
-                        // Ratio Button/Display
                         ZStack {
                             Rectangle()
                                 .foregroundColor(.white)
@@ -88,7 +101,6 @@ struct ProfileCardView: View {
                                 .frame(width: 100, height: 50)
                             
                             if hasSharedApp {
-                                // Show ratio when app has been shared
                                 HStack(spacing: 4) {
                                     Text("\(Int(calculateRatio()))")
                                         .font(.title3)
@@ -99,7 +111,6 @@ struct ProfileCardView: View {
                                 }
                                 .foregroundColor(.black)
                             } else {
-                                // Show share button when not shared
                                 Button {
                                     showShareSheet = true
                                 } label: {
@@ -113,7 +124,6 @@ struct ProfileCardView: View {
                         }
                     }
                     
-                    // Page indicators
                     HStack(spacing: 4) {
                         ForEach(0..<user.pictureURLs.count, id: \.self) { index in
                             Circle()
@@ -126,17 +136,17 @@ struct ProfileCardView: View {
             }
             
             if let stamp = stampType {
-                            Circle()
-                                .stroke(stamp == .like ? Color.green : Color.red, lineWidth: 8)
-                                .frame(width: 120, height: 120)
-                                .overlay(
-                                    Image(systemName: stamp == .like ? "heart.fill" : "xmark")
-                                        .font(.system(size: 60))
-                                        .foregroundColor(stamp == .like ? .green : .red)
-                                )
-                                .opacity(0.8)
-                                .transition(.scale)
-                        }
+                Circle()
+                    .stroke(stamp == .like ? Color.green : Color.red, lineWidth: 8)
+                    .frame(width: 120, height: 120)
+                    .overlay(
+                        Image(systemName: stamp == .like ? "heart.fill" : "xmark")
+                            .font(.system(size: 60))
+                            .foregroundColor(stamp == .like ? .green : .red)
+                    )
+                    .opacity(0.8)
+                    .transition(.scale)
+            }
         }
         .frame(width: 400, height: 500)
         .clipShape(RoundedRectangle(cornerRadius: 20))
