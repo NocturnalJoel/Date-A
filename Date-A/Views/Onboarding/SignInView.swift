@@ -32,7 +32,7 @@ struct SignInView: View {
                             .font(.system(size: 17))
                             .keyboardType(.emailAddress)
                             .autocapitalization(.none)
-                            .textContentType(.username)  // Enable username autofill
+                            .textContentType(.emailAddress)  // Enable username autofill
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .padding()

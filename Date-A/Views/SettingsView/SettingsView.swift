@@ -18,19 +18,18 @@ struct SettingsView: View {
     @State private var showDeleteAccount = false
     
     private func refreshUserData() async {
-           do {
-               if let user = model.currentUser {
-                   selectedPreference = user.genderPreference
-                   minAge = Double(user.minAgePreference)
-                   maxAge = Double(user.maxAgePreference)
-                   if selectedImages.isEmpty {
-                       selectedImages = model.currentUserImages
-                   }
-               }
-           } catch {
-               print("❌ Error refreshing user data: \(error.localizedDescription)")
-           }
-       }
+        do {
+            if let user = model.currentUser {
+                selectedPreference = user.genderPreference
+                minAge = Double(user.minAgePreference)
+                maxAge = Double(user.maxAgePreference)
+                // Remove the conditional check
+                selectedImages = model.currentUserImages
+            }
+        } catch {
+            print("❌ Error refreshing user data: \(error.localizedDescription)")
+        }
+    }
     
     
     
@@ -79,9 +78,9 @@ struct SettingsView: View {
             .onAppear {
                 Task {
                     await refreshUserData()
-                    if selectedImages.isEmpty {
+                 
                         selectedImages = model.currentUserImages
-                    }
+                    
                 }
             }
             .onChange(of: selectedItems) { items in

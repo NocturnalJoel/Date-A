@@ -94,169 +94,80 @@ class ContentModel: NSObject, ObservableObject {
     
     @MainActor
     func initializeStacks() {
-        print("🚀 Starting stack initialization")
-        
         Task {
-            print("🧹 Clearing existing stacks")
-            // Clear existing stacks
             moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
             profileStack.removeAll()
             
             guard let currentUserId = Auth.auth().currentUser?.uid,
                   let currentUser = self.currentUser else {
-                print("❌ Error: Unable to retrieve current user or user ID")
                 return
             }
-            print("✅ Current User ID: \(currentUserId)")
             
             do {
-                // Get filtered IDs for users we've already interacted with
-                print("🔍 Fetching filtered IDs for user")
                 let (dislikedIds, likedIds) = try await getFilteredIds(for: currentUserId)
-                print("✅ Disliked IDs: \(dislikedIds.count), Liked IDs: \(likedIds.count)")
                 
-                // Initialize each moon level stack
                 for level in 0...4 {
-                    print("🌙 Initializing stack for moon level \(level)")
                     let query = db.collection("users")
                         .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
                         .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
-                        .whereField("likeRatio", isGreaterThan: level == 0 ? -1 : Double((level - 1) * 20))
-                        .whereField("likeRatio", isLessThanOrEqualTo: Double(level * 20))
+                        .whereField("likeRatio", isGreaterThan: Double(level * 20))
+                        .whereField("likeRatio", isLessThanOrEqualTo: Double((level + 1) * 20))
                         .limit(to: 10)
                     
                     let querySnapshot = try await query.getDocuments()
-                    print("✅ Retrieved \(querySnapshot.documents.count) profiles for level \(level)")
                     
-                    // Process profiles for this level
                     let levelProfiles = querySnapshot.documents.compactMap { doc -> User? in
-                        guard let user = try? doc.data(as: User.self),
-                              !dislikedIds.contains(user.id),
-                              !likedIds.contains(user.id),
-                              user.id != currentUserId,
-                              user.age >= currentUser.minAgePreference,
-                              user.age <= currentUser.maxAgePreference else {
+                        let docId = doc.documentID
+                        
+                        guard let user = try? doc.data(as: User.self) else {
                             return nil
                         }
+                        
+                        guard !dislikedIds.contains(user.id) else {
+                            return nil
+                        }
+                        
+                        guard !likedIds.contains(user.id) else {
+                            return nil
+                        }
+                        
+                        guard user.id != currentUserId else {
+                            return nil
+                        }
+                        
+                        guard user.age >= currentUser.minAgePreference else {
+                            return nil
+                        }
+                        
+                        guard user.age <= currentUser.maxAgePreference else {
+                            return nil
+                        }
+                        
+                        guard user.gender == currentUser.genderPreference else {
+                            return nil
+                        }
+                        
                         return user
                     }
-                    print("✅ Filtered \(levelProfiles.count) profiles for level \(level)")
                     
                     moonLevelStacks[level] = levelProfiles
                     
-                    // Preload images for this level's profiles
                     await withTaskGroup(of: Void.self) { group in
                         for user in levelProfiles {
                             group.addTask { [weak self] in
-                                print("📦 Preloading images for user \(user.id)")
                                 await self?.preloadImagesForUser(user)
                             }
                         }
                     }
                 }
                 
-                // Update display stack
-                print("🔄 Updating display stack")
                 updateDisplayStack()
-                print("✅ Stack initialization complete")
+                
             } catch {
-                print("❌ Error during stack initialization: \(error.localizedDescription)")
             }
         }
     }
 
-    
-    @MainActor
-    private func fetchProfiles() async {
-        guard !isLoadingProfiles, !hasReachedEnd else {
-            print("⚠️ Skipping fetch - isLoadingProfiles: \(isLoadingProfiles), hasReachedEnd: \(hasReachedEnd)")
-            return
-        }
-        
-        isLoadingProfiles = true
-        print("🎯 Starting profile fetch for moon level \(currentMoonLevel)")
-        
-        do {
-            guard let currentUserId = Auth.auth().currentUser?.uid,
-                  let currentUser = self.currentUser else {
-                print("❌ No current user found")
-                isLoadingProfiles = false
-                return
-            }
-            
-            // Get filters
-            let (dislikedIds, likedIds) = try await getFilteredIds(for: currentUserId)
-            print("🎭 Found \(dislikedIds.count) dislikes and \(likedIds.count) likes")
-            
-            var query = db.collection("users")
-                .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
-                .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
-                .whereField("likeRatio", isGreaterThanOrEqualTo: Double(currentMoonLevel * 20))
-                .whereField("likeRatio", isLessThanOrEqualTo: Double((currentMoonLevel * 20) + 20))
-                .limit(to: stackSize)
-            
-            if let lastUserId = self.lastFetchedUserId {
-                print("📄 Paginating after user: \(lastUserId)")
-                let lastDoc = try await db.collection("users").document(lastUserId).getDocument()
-                if lastDoc.exists {
-                    query = query.start(afterDocument: lastDoc)
-                } else {
-                    hasReachedEnd = true
-                    isLoadingProfiles = false
-                    print("🏁 Last document no longer exists, reached end")
-                    return
-                }
-            }
-            
-            let querySnapshot = try await query.getDocuments()
-            print("📦 Received \(querySnapshot.documents.count) documents from Firestore")
-            
-            if querySnapshot.documents.isEmpty {
-                hasReachedEnd = true
-                isLoadingProfiles = false
-                print("🏁 No more documents, reached end")
-                return
-            }
-            
-            let newProfiles = querySnapshot.documents.compactMap { doc -> User? in
-                guard let user = try? doc.data(as: User.self),
-                      !dislikedIds.contains(user.id),
-                      !likedIds.contains(user.id),
-                      user.id != currentUserId,
-                      user.age >= currentUser.minAgePreference,
-                      user.age <= currentUser.maxAgePreference,
-                      !profileStack.contains(where: { $0.id == user.id }) else {
-                    return nil
-                }
-                return user
-            }
-            
-            // Update pagination
-            self.lastFetchedUserId = querySnapshot.documents.last?.documentID
-            print("📝 Updated last fetched ID to: \(self.lastFetchedUserId ?? "nil")")
-            
-            print("✨ Found \(newProfiles.count) new matching profiles")
-            
-            // Preload images
-            await preloadImagesForUsers(newProfiles)
-            print("🖼️ Preloaded images for new profiles")
-            
-            // Update UI
-            if profileStack.isEmpty {
-                profileStack = newProfiles
-                print("📚 Set new profiles as stack")
-            } else {
-                profileStack.append(contentsOf: newProfiles)
-                print("📚 Appended \(newProfiles.count) profiles to stack")
-            }
-            
-            isLoadingProfiles = false
-            
-        } catch {
-            print("❌ Error fetching profiles: \(error)")
-            isLoadingProfiles = false
-        }
-    }
     
     private func getFilteredIds(for userId: String) async throws -> (Set<String>, Set<String>) {
         async let dislikedDocs = db.collection("users").document(userId).collection("dislikes").getDocuments()
@@ -363,7 +274,7 @@ class ContentModel: NSObject, ObservableObject {
                 if profileStack.count < minStackSize {
                     print("📥 Stack size (\(profileStack.count)) below minimum (\(minStackSize)). Triggering refill...")
                     Task {
-                        await fetchProfiles()
+                        await initializeStacks()
                     }
                 }
             }
@@ -423,7 +334,7 @@ class ContentModel: NSObject, ObservableObject {
                 if profileStack.count < minStackSize {
                     print("📥 Stack size (\(profileStack.count)) below minimum (\(minStackSize)). Triggering refill...")
                     Task {
-                        await fetchProfiles()
+                        await initializeStacks()
                     }
                 }
             }
@@ -616,8 +527,8 @@ class ContentModel: NSObject, ObservableObject {
     }
     
     func createAccount(firstName: String, age: Int, gender: User.Gender,
-                       genderPreference: User.Gender, email: String,
-                       password: String, images: [UIImage]) async throws {
+                      genderPreference: User.Gender, email: String,
+                      password: String, images: [UIImage]) async throws {
         print("📝 Starting account creation process")
         print("📸 Number of images to upload: \(images.count)")
         
@@ -644,10 +555,18 @@ class ContentModel: NSObject, ObservableObject {
             var pictureURLs: [String] = []
             
             for (index, image) in images.enumerated() {
-                // ... [Image upload code remains the same]
+                guard let imageData = image.jpegData(compressionQuality: 0.7) else { continue }
+                
+                let imagePath = "users/\(userId)/profile_\(index).jpg"
+                let imageRef = storage.reference().child(imagePath)
+                
+                _ = try await imageRef.putDataAsync(imageData)
+                let downloadURL = try await imageRef.downloadURL()
+                pictureURLs.append(downloadURL.absoluteString)
             }
             
             print("✅ All images uploaded successfully")
+            print("📸 URLs loaded: \(pictureURLs)")
             
             // 3. Create User object
             print("👤 Creating user object...")
@@ -686,6 +605,7 @@ class ContentModel: NSObject, ObservableObject {
             throw error
         }
     }
+
     
     func checkAuthStatus() {
         if Auth.auth().currentUser != nil {
