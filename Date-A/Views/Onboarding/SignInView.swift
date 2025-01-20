@@ -18,12 +18,12 @@ struct SignInView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 24) {
-                
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Welcome Back")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 20)
+                    
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Email")
                             .font(.system(size: 15, weight: .medium))
@@ -32,6 +32,9 @@ struct SignInView: View {
                             .font(.system(size: 17))
                             .keyboardType(.emailAddress)
                             .autocapitalization(.none)
+                            .textContentType(.username)  // Enable username autofill
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                             .padding()
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(12)
@@ -43,6 +46,7 @@ struct SignInView: View {
                             .foregroundColor(.gray)
                         SecureField("", text: $signInPassword)
                             .font(.system(size: 17))
+                            .textContentType(.password)  // Enable password autofill
                             .padding()
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(12)

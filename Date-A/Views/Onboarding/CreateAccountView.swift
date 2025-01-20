@@ -29,6 +29,7 @@ struct CreateAccountView: View {
     @State private var progressValue: CGFloat = 0
     @State private var showProgress = false
     @State private var selectedReferralSource: ReferralSource = .friend
+    @State private var verifyPassword = ""
     
     // Create Account states
     @State private var firstName = ""
@@ -179,6 +180,7 @@ struct CreateAccountView: View {
                                 .font(.system(size: 17))
                                 .keyboardType(.emailAddress)
                                 .autocapitalization(.none)
+                                .textContentType(.username)
                                 .padding()
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(12)
@@ -190,10 +192,26 @@ struct CreateAccountView: View {
                                 .foregroundColor(.gray)
                             SecureField("", text: $createPassword)
                                 .font(.system(size: 17))
+                                .textContentType(.newPassword)
                                 .padding()
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(12)
+                            
+                            
                         }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                                    Text("Verify Password")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.gray)
+                                    SecureField("", text: $verifyPassword)
+                                        .font(.system(size: 17))
+                                        .textContentType(.newPassword)
+                                        .padding()
+                                        .background(Color.gray.opacity(0.1))
+                                        .cornerRadius(12)
+                                }
+                        
                         VStack(alignment: .leading, spacing: 8) {
                                 Text("How did you hear about us?")
                                     .font(.system(size: 15, weight: .medium))
@@ -327,40 +345,46 @@ struct CreateAccountView: View {
     
     // MARK: - Helper Functions
     private func handleCreateAccount() {
-        guard let ageInt = Int(age), ageInt >= 18 else {
-            model.errorMessage = "Invalid age. Must be 18 or older."
-            return
-        }
-        
-        guard !selectedImages.isEmpty else {
-            model.errorMessage = "Please select at least one photo"
-            return
-        }
-        
-        showProgress = true
-        withAnimation(.linear(duration: 2)) {
-            progressValue = 1.0
-        }
-        
-        Analytics.logEvent("account_creation", parameters: [
-                    "referral_source": selectedReferralSource.rawValue
-                ])
-        
-        Task {
-            do {
-                try await model.createAccount(
-                    firstName: firstName,
-                    age: ageInt,
-                    gender: selectedGender,
-                    genderPreference: selectedPreference,
-                    email: createEmail,
-                    password: createPassword,
-                    images: selectedImages
-                )
-            } catch {
-                showProgress = false
-                progressValue = 0
+            guard let ageInt = Int(age), ageInt >= 18 else {
+                model.errorMessage = "Invalid age. Must be 18 or older."
+                return
+            }
+            
+            guard !selectedImages.isEmpty else {
+                model.errorMessage = "Please select at least one photo"
+                return
+            }
+            
+            // Add password verification check
+            guard createPassword == verifyPassword else {
+                model.errorMessage = "Passwords do not match"
+                return
+            }
+            
+            showProgress = true
+            withAnimation(.linear(duration: 2)) {
+                progressValue = 1.0
+            }
+            
+            Analytics.logEvent("account_creation", parameters: [
+                "referral_source": selectedReferralSource.rawValue
+            ])
+            
+            Task {
+                do {
+                    try await model.createAccount(
+                        firstName: firstName,
+                        age: ageInt,
+                        gender: selectedGender,
+                        genderPreference: selectedPreference,
+                        email: createEmail,
+                        password: createPassword,
+                        images: selectedImages
+                    )
+                } catch {
+                    showProgress = false
+                    progressValue = 0
+                }
             }
         }
-    }
 }

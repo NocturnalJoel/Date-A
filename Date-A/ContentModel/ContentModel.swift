@@ -121,8 +121,8 @@ class ContentModel: NSObject, ObservableObject {
                     let query = db.collection("users")
                         .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
                         .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
-                        .whereField("likeRatio", isGreaterThanOrEqualTo: Double(level * 20))
-                        .whereField("likeRatio", isLessThanOrEqualTo: Double((level * 20) + 20))
+                        .whereField("likeRatio", isGreaterThan: level == 0 ? -1 : Double((level - 1) * 20))
+                        .whereField("likeRatio", isLessThanOrEqualTo: Double(level * 20))
                         .limit(to: 10)
                     
                     let querySnapshot = try await query.getDocuments()
