@@ -9,12 +9,7 @@ struct ProfileCardView: View {
     
     @EnvironmentObject var model: ContentModel
     
-    private func calculateRatio() -> Double {
-        let total = user.timesLiked + user.timesDisliked
-        guard total > 0 else { return 0 }
-        return (Double(user.timesLiked) / Double(total)) * 100
-    }
-    
+        
     var body: some View {
         ZStack {
             // Image carousel
@@ -27,7 +22,8 @@ struct ProfileCardView: View {
                             .aspectRatio(contentMode: .fill)
                             .tag(index)
                     } else {
-                        // Fallback to AsyncImage if not preloaded
+                        // Since we're preloading all images in our new system,
+                        // this fallback should rarely be needed
                         AsyncImage(url: URL(string: url)) { phase in
                             switch phase {
                             case .success(let image):
@@ -48,11 +44,9 @@ struct ProfileCardView: View {
                         }
                         .tag(index)
                         .onAppear {
-                            // Try to preload if not already loaded
-                            if !model.areImagesPreloaded(for: user) {
-                                Task {
-                                    await model.preloadImagesForUser(user)
-                                }
+                            // Try to preload if somehow not already loaded
+                            Task {
+                                await model.preloadImagesForUser(user)
                             }
                         }
                     }
@@ -60,7 +54,7 @@ struct ProfileCardView: View {
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             
-            // Rest of the view remains the same
+            // Rest of the view remains exactly the same
             VStack {
                 LinearGradient(
                     gradient: Gradient(colors: [.clear, .black.opacity(0.1)]),
@@ -102,7 +96,7 @@ struct ProfileCardView: View {
                             
                             if hasSharedApp {
                                 HStack(spacing: 4) {
-                                    Text("\(Int(calculateRatio()))")
+                                    Text("\(Int(user.likeRatio))")
                                         .font(.title3)
                                         .fontWeight(.bold)
                                     Text("%")
@@ -124,6 +118,7 @@ struct ProfileCardView: View {
                         }
                     }
                     
+                    // Image indicators
                     HStack(spacing: 4) {
                         ForEach(0..<user.pictureURLs.count, id: \.self) { index in
                             Circle()
@@ -135,6 +130,7 @@ struct ProfileCardView: View {
                 .padding()
             }
             
+            // Stamp overlay
             if let stamp = stampType {
                 Circle()
                     .stroke(stamp == .like ? Color.green : Color.red, lineWidth: 8)

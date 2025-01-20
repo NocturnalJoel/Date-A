@@ -35,249 +35,79 @@ struct SettingsView: View {
     
     
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 32) {
-                // Header
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(.black)
-                    }
-                    .buttonStyle(.plain)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 32) {
+                    HeaderView(dismiss: dismiss)
                     
-                    Text("Settings")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.top, 20)
-                
-                VStack(spacing: 28) {
-                    // Photos Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Profile Photos")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundColor(.gray)
+                    VStack(spacing: 28) {
+                        PhotosSectionView(
+                            model: model,
+                            selectedImages: $selectedImages,
+                            selectedItems: $selectedItems,
+                            showPhotoPermissionAlert: $showPhotoPermissionAlert
+                        )
                         
-                        if model.permissionGranted {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(selectedImages.isEmpty ? model.currentUserImages.indices : selectedImages.indices, id: \.self) { index in
-                                        Image(uiImage: selectedImages.isEmpty ? model.currentUserImages[index] : selectedImages[index])
-                                            .resizable()
-                                            .scaledToFill()
-                                            .frame(width: 120, height: 160)
-                                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                                    }
-                                }
-                            }
-                            .frame(height: 160)
-                            
-                            PhotosPicker(
-                                selection: $selectedItems,
-                                maxSelectionCount: 6,
-                                matching: .images
-                            ) {
-                                HStack {
-                                    Image(systemName: "photo.on.rectangle.angled")
-                                    Text("Edit Photos")
-                                }
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 50)
-                                .background(Color.gray)
-                                .cornerRadius(12)
-                            }
-                        } else {
-                            Button {
-                                Task {
-                                    let granted = await model.requestPermission()
-                                    if !granted {
-                                        showPhotoPermissionAlert = true
-                                    }
-                                }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "photo.on.rectangle.angled")
-                                    Text("Add Photos")
-                                }
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 50)
-                                .background(Color.gray)
-                                .cornerRadius(12)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    
-                    // Age Preference
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text("Age Preference")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundColor(.gray)
+                        AgePreferenceView(
+                            minAge: $minAge,
+                            maxAge: $maxAge
+                        )
                         
-                        VStack(spacing: 8) {
-                            RangeSlider(minValue: $minAge, maxValue: $maxAge, range: 18...99)
-                                .padding(.horizontal)
-                            
-                            HStack {
-                                Text("\(Int(minAge))")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.gray)
-                                Spacer()
-                                Text("\(Int(maxAge))")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.gray)
-                            }
-                            .padding(.horizontal)
-                        }
-                    }
-                    
-                    // Gender Preference
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Interested in")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundColor(.gray)
-                        Picker("", selection: $selectedPreference) {
-                            ForEach(User.Gender.allCases, id: \.self) { gender in
-                                Text(gender.rawValue).tag(gender)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(6)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(12)
-                        .buttonStyle(.plain)
-                    }
-                    
-                    // Ratio Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Your Ratio")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundColor(.gray)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        GenderPreferenceView(
+                            selectedPreference: $selectedPreference
+                        )
                         
-                        CircularProgressView(percentage: Double(calculateRatio()))
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 16)
+                        RatioSectionView(
+                            ratio: model.currentUser?.likeRatio ?? 0.0
+                        )
+                    }
+                    
+                    ButtonsSectionView(
+                        model: model,
+                        isSaving: $isSaving,
+                        showDeleteAccount: $showDeleteAccount,
+                        selectedImages: selectedImages,
+                        minAge: minAge,
+                        maxAge: maxAge,
+                        selectedPreference: selectedPreference,
+                        refreshUserData: refreshUserData
+                    )
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 32)
+            }
+            .navigationBarHidden(true)
+            .onAppear {
+                Task {
+                    await refreshUserData()
+                    if selectedImages.isEmpty {
+                        selectedImages = model.currentUserImages
                     }
                 }
-                
-                // Save Button
-                Button {
-                    Task {
-                        do {
-                            isSaving = true
-                            try await model.updateUserSettings(
-                                images: selectedImages,
-                                minAge: minAge,
-                                maxAge: maxAge,
-                                genderPreference: selectedPreference
-                            )
-                            await refreshUserData()
-                            isSaving = false
-                        } catch {
-                            isSaving = false
-                            print("❌ Error updating settings: \(error.localizedDescription)")
+            }
+            .onChange(of: selectedItems) { items in
+                Task {
+                    selectedImages = []
+                    for item in items {
+                        if let data = try? await item.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data) {
+                            selectedImages.append(image)
                         }
                     }
-                } label: {
-                    if isSaving {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                    } else {
-                        Text("Save Modifications")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(Color.black)
-                            .cornerRadius(16)
+                }
+            }
+            .alert("Photo Access Required", isPresented: $showPhotoPermissionAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Open Settings") {
+                    if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(settingsUrl)
                     }
                 }
-                .padding(.top, 8)
-                .buttonStyle(.plain)
-                
-                // Log Out Button
-                Button {
-                    Task {
-                        do {
-                            try await model.signOut()
-                        } catch {
-                            print("❌ Error logging out: \(error.localizedDescription)")
-                        }
-                    }
-                } label: {
-                    Text("Log Out")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color.red)
-                        .cornerRadius(16)
-                }
-                .buttonStyle(.plain)
-                
-                Button {
-                    showDeleteAccount = true
-                } label: {
-                    Text("Delete Account")
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(.plain)
-                .sheet(isPresented: $showDeleteAccount) {
-                    DeleteAccountView()
-                        .environmentObject(model)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 32)
-        }
-        .navigationBarHidden(true)
-        .onAppear {
-            Task {
-                await refreshUserData()
-                if selectedImages.isEmpty {
-                    selectedImages = model.currentUserImages
-                }
+            } message: {
+                Text("Please enable photo access in Settings to select photos for your profile.")
             }
         }
-        .onChange(of: selectedItems) { items in
-            Task {
-                selectedImages = []
-                for item in items {
-                    if let data = try? await item.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data) {
-                        selectedImages.append(image)
-                    }
-                }
-            }
-        }
-        .alert("Photo Access Required", isPresented: $showPhotoPermissionAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Open Settings") {
-                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(settingsUrl)
-                }
-            }
-        } message: {
-            Text("Please enable photo access in Settings to select photos for your profile.")
-        }
-    }
     
-    private func calculateRatio() -> Int {
-        guard let user = model.currentUser else { return 0 }
-        
-        let total = user.timesLiked + user.timesDisliked
-        guard total > 0 else { return 0 }
-        
-        return Int((Double(user.timesLiked) / Double(total)) * 100)
-    }
+    
 }
 
 struct ShareOption: Identifiable {
@@ -286,6 +116,253 @@ struct ShareOption: Identifiable {
     let icon: String
     let color: Color
     let urlScheme: String
+}
+
+struct HeaderView: View {
+    let dismiss: DismissAction
+    
+    var body: some View {
+        HStack {
+            Button(action: { dismiss() }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(.black)
+            }
+            .buttonStyle(.plain)
+            
+            Text("Settings")
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.top, 20)
+    }
+}
+// Photos Section
+struct PhotosSectionView: View {
+   @ObservedObject var model: ContentModel
+   @Binding var selectedImages: [UIImage]
+   @Binding var selectedItems: [PhotosPickerItem]
+   @Binding var showPhotoPermissionAlert: Bool
+   
+   var body: some View {
+       VStack(alignment: .leading, spacing: 12) {
+           Text("Profile Photos")
+               .font(.system(size: 17, weight: .semibold, design: .rounded))
+               .foregroundColor(.gray)
+           
+           if model.permissionGranted {
+               ScrollView(.horizontal, showsIndicators: false) {
+                   HStack(spacing: 12) {
+                       ForEach(selectedImages.isEmpty ? model.currentUserImages.indices : selectedImages.indices, id: \.self) { index in
+                           Image(uiImage: selectedImages.isEmpty ? model.currentUserImages[index] : selectedImages[index])
+                               .resizable()
+                               .scaledToFill()
+                               .frame(width: 120, height: 160)
+                               .clipShape(RoundedRectangle(cornerRadius: 16))
+                       }
+                   }
+               }
+               .frame(height: 160)
+               
+               PhotosPicker(
+                   selection: $selectedItems,
+                   maxSelectionCount: 6,
+                   matching: .images
+               ) {
+                   HStack {
+                       Image(systemName: "photo.on.rectangle.angled")
+                       Text("Edit Photos")
+                   }
+                   .font(.system(size: 16, weight: .medium))
+                   .foregroundColor(.white)
+                   .frame(maxWidth: .infinity)
+                   .frame(height: 50)
+                   .background(Color.gray)
+                   .cornerRadius(12)
+               }
+           } else {
+               Button {
+                   Task {
+                       let granted = await model.requestPermission()
+                       if !granted {
+                           showPhotoPermissionAlert = true
+                       }
+                   }
+               } label: {
+                   HStack {
+                       Image(systemName: "photo.on.rectangle.angled")
+                       Text("Add Photos")
+                   }
+                   .font(.system(size: 16, weight: .medium))
+                   .foregroundColor(.white)
+                   .frame(maxWidth: .infinity)
+                   .frame(height: 50)
+                   .background(Color.gray)
+                   .cornerRadius(12)
+               }
+               .buttonStyle(.plain)
+           }
+       }
+   }
+}
+// Age Preference Section
+struct AgePreferenceView: View {
+    @Binding var minAge: Double
+    @Binding var maxAge: Double
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Age Preference")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundColor(.gray)
+            
+            VStack(spacing: 8) {
+                RangeSlider(minValue: $minAge, maxValue: $maxAge, range: 18...99)
+                    .padding(.horizontal)
+                
+                HStack {
+                    Text("\(Int(minAge))")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Text("\(Int(maxAge))")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.gray)
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+}
+
+// Gender Preference Section
+struct GenderPreferenceView: View {
+    @Binding var selectedPreference: User.Gender
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Interested in")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundColor(.gray)
+            
+            Picker("", selection: $selectedPreference) {
+                ForEach(User.Gender.allCases, id: \.self) { gender in
+                    Text(gender.rawValue).tag(gender)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(6)
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(12)
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+// Ratio Section
+struct RatioSectionView: View {
+    let ratio: Double
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Your Ratio")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundColor(.gray)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            CircularProgressView(percentage: Double(ratio))
+                .frame(maxWidth: .infinity)
+                .padding(.top, 16)
+        }
+    }
+}
+
+// Buttons Section
+struct ButtonsSectionView: View {
+    @ObservedObject var model: ContentModel
+    @Binding var isSaving: Bool
+    @Binding var showDeleteAccount: Bool
+    
+    let selectedImages: [UIImage]
+    let minAge: Double
+    let maxAge: Double
+    let selectedPreference: User.Gender
+    let refreshUserData: () async -> Void
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Save Button
+            Button {
+                            Task {
+                                do {
+                                    isSaving = true
+                                    try await model.updateUserSettings(
+                                        images: selectedImages,
+                                        minAge: minAge,
+                                        maxAge: maxAge,
+                                        genderPreference: selectedPreference
+                                    )
+                                    model.initializeStacks()
+                                    await refreshUserData() // Now this will work
+                                    isSaving = false
+                                } catch {
+                                    isSaving = false
+                                    print("❌ Error updating settings: \(error.localizedDescription)")
+                                }
+                            }
+                        } label: {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 56)
+                            } else {
+                                Text("Save Modifications")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 56)
+                                    .background(Color.black)
+                                    .cornerRadius(16)
+                            }
+                        }
+                        .padding(.top, 8)
+                        .buttonStyle(.plain)
+            
+            // Log Out Button
+            Button {
+                Task {
+                    do {
+                        try await model.signOut()
+                    } catch {
+                        print("❌ Error logging out: \(error.localizedDescription)")
+                    }
+                }
+            } label: {
+                Text("Log Out")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.red)
+                    .cornerRadius(16)
+            }
+            .buttonStyle(.plain)
+            
+            // Delete Account Button
+            Button {
+                showDeleteAccount = true
+            } label: {
+                Text("Delete Account")
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showDeleteAccount) {
+                DeleteAccountView()
+                    .environmentObject(model)
+            }
+        }
+    }
 }
 
 struct MessageComposerView: UIViewControllerRepresentable {

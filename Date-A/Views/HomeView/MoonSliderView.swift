@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct MoonSliderView: View {
-    @Binding var selectedLevel: Int // Default to middle level (40-60)
+    @Binding var selectedLevel: Int
+    @EnvironmentObject var model: ContentModel
     
     private let moonPhases = ["🌑", "🌘", "🌗", "🌖", "🌕"]
     private let ranges = ["0-20", "20-40", "40-60", "60-80", "80-100"]
@@ -12,7 +13,9 @@ struct MoonSliderView: View {
             HStack {
                 ForEach(0..<5) { index in
                     Button(action: {
-                        selectedLevel = index
+                        if selectedLevel != index {
+                            selectedLevel = index
+                        }
                     }) {
                         VStack(spacing: 4) {
                             Text(moonPhases[index])
@@ -27,6 +30,7 @@ struct MoonSliderView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
+                    .disabled(model.isLoadingCurrentLevel()) // Disable during loading
                 }
             }
             
@@ -52,6 +56,4 @@ struct MoonSliderView: View {
         .background(Color.white)
         .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
     }
-    
 }
-

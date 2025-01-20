@@ -4,7 +4,6 @@
 //  Created by Joël Lacoste-Therrien on 2024-11-10.
 //
 import SwiftUI
-
 struct HomeView: View {
     @EnvironmentObject var model: ContentModel
     @State private var matchedUser: User?
@@ -17,19 +16,15 @@ struct HomeView: View {
                 NavigationBarView()
                     .environmentObject(model)
                 
-                MoonSliderView(selectedLevel: $model.moonSliderLevel)
+                MoonSliderView(selectedLevel: $model.currentMoonLevel)
                     .environmentObject(model)
                 
                 Spacer()
                 
                 ZStack {
-                    if model.isLoadingProfiles {
-                        // Show loading placeholder
-                        ProfileCardPlaceholder()
-                            .background(Color(.systemBackground))
-                    } else if model.profileStack.isEmpty {
-                        if model.hasReachedEnd {
-                            // Show empty state
+                    if !model.checkProfileVisibility() {
+                        if model.hasReachedEndForCurrentLevel() {
+                            // Empty state view
                             VStack(spacing: 16) {
                                 Text("🌌")
                                     .font(.system(size: 150, weight: .bold))
@@ -47,7 +42,7 @@ struct HomeView: View {
                             .shadow(radius: 5)
                             .padding()
                         } else {
-                            // Show loading placeholder while fetching
+                            // Loading placeholder
                             ProfileCardPlaceholder()
                                 .background(Color(.systemBackground))
                         }
@@ -57,24 +52,18 @@ struct HomeView: View {
                             ProfileCardView(user: user, stampType: $stampType)
                                 .opacity(index == 0 ? 1 : 0.05)
                                 .background(Color(.systemBackground))
-                                .id("\(user.id)_\(index)")  // Ensure unique identification
+                                .id("\(user.id)_\(index)")
                         }
                     }
                 }
                 .background(Color(.systemBackground))
                 .frame(height: 500)
-                .onChange(of: model.profileStack.count) { count in
-                    if count < 3 {
-                        print("📊 Profile stack count dropped to \(count), fetching more")
-                        model.fetchMoreProfilesIfNeeded()
-                    }
-                }
                 
                 Spacer()
                 
                 ButtonsView(showMatchAnimation: $showMatchAnimation,
-                            matchedUser: $matchedUser,
-                            stampType: $stampType)
+                          matchedUser: $matchedUser,
+                          stampType: $stampType)
                     .environmentObject(model)
             }
             .navigationBarHidden(true)
@@ -86,16 +75,12 @@ struct HomeView: View {
                 }
             )
             .onAppear {
-                model.startFetchingProfiles()
                 Task {
-                    do {
-                        try await model.refreshCurrentUser()
-                        await model.loadUnmatchedProfiles()
-                        try await model.fetchMatches()
-                    } catch {
-                        print("Error fetching matches: \(error)")
-                        print("Error refreshing user data: \(error)")
-                    }
+                    
+                    try? await model.refreshCurrentUser()
+                    model.initializeStacks()  // This now loads all stacks at once
+                    try? await model.fetchMatches()
+                    await model.loadUnmatchedProfiles()
                 }
             }
         }

@@ -5,44 +5,16 @@ struct ButtonsView: View {
     @State private var likeError: Error?
     @State private var showError = false
     @Binding var showMatchAnimation: Bool
-    @State private var leftButtonColor = Color.white
-    @State private var rightButtonColor = Color.white
     @Binding var matchedUser: User?
     @Binding var stampType: StampType?
-
-    
-    private func handleMatch() async {
-            showMatchAnimation = true
-            // Play haptic feedback
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.success)
-        }
+    @State private var leftButtonColor = Color.white
+    @State private var rightButtonColor = Color.white
     
     var body: some View {
         HStack(spacing: 40) {
             // Dislike Button
             Button(action: {
-                flashButton(isLike: false)
-                                
-                                guard !model.profileStack.isEmpty else { return }
-                                let topProfile = model.profileStack[0]
-                
-                withAnimation(.spring()) {
-                                    stampType = .dislike
-                                }
-                                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    Task {
-                                        do {
-                                            try await model.dislikeUser(topProfile)
-                                            stampType = nil  // Reset stamp
-                                        } catch {
-                                            print("Dislike error: \(error)")
-                                            likeError = error
-                                            showError = true
-                                        }
-                                    }
-                                }
+                handleDislike()
             }) {
                 ZStack {
                     Circle()
@@ -59,45 +31,11 @@ struct ButtonsView: View {
                 }
             }
             .buttonStyle(.plain)
+            .disabled(!model.checkProfileVisibility() || model.isLoadingCurrentLevel())
             
             // Like Button
             Button(action: {
-                flashButton(isLike: true)
-                                
-                                guard !model.profileStack.isEmpty else { return }
-                                let topProfile = model.profileStack[0]
-                withAnimation(.spring()) {
-                                    stampType = .like
-                                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    Task {
-                        do {
-                            try await model.likeUser(topProfile)
-                            
-                            let oldMatchCount = model.matches.count
-                            
-                            try await model.fetchMatches()
-                            
-                            if model.matches.count > oldMatchCount {
-                                await MainActor.run {
-                                    matchedUser = topProfile
-                                    showMatchAnimation = true
-                                }
-                            }
-                            
-                            
-                            // Reset stamp
-                            
-                            stampType = nil
-                        } catch {
-                            print("Like error: \(error)")
-                            likeError = error
-                            showError = true
-                        }
-                        
-                    }
-                }
-                
+                handleLike()
             }) {
                 ZStack {
                     Circle()
@@ -114,6 +52,7 @@ struct ButtonsView: View {
                 }
             }
             .buttonStyle(.plain)
+            .disabled(!model.checkProfileVisibility() || model.isLoadingCurrentLevel())
         }
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
@@ -121,10 +60,66 @@ struct ButtonsView: View {
         .animation(.easeInOut(duration: 0.3), value: leftButtonColor)
         .animation(.easeInOut(duration: 0.3), value: rightButtonColor)
         .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: -2)
-        .alert("Error", isPresented: $showError) {
-            Button("OK") { showError = false }
-        } message: {
-            Text(likeError?.localizedDescription ?? "Unknown error occurred")
+    }
+    
+    private func handleLike() {
+        guard !model.profileStack.isEmpty else { return }
+        let topProfile = model.profileStack[0]
+        
+        withAnimation(.spring()) {
+            stampType = .like
+        }
+        
+        flashButton(isLike: true)
+        
+        // Add delay before performing backend operations
+        Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
+            
+            do {
+                try await model.likeUser(topProfile)
+                
+                let oldMatchCount = model.matches.count
+                try await model.fetchMatches()
+                
+                if model.matches.count > oldMatchCount {
+                    await MainActor.run {
+                        matchedUser = topProfile
+                        showMatchAnimation = true
+                    }
+                }
+                
+                await MainActor.run {
+                    stampType = nil
+                }
+            } catch {
+                print("Like error: \(error)")
+            }
+        }
+    }
+
+    private func handleDislike() {
+        guard !model.profileStack.isEmpty else { return }
+        let topProfile = model.profileStack[0]
+        
+        withAnimation(.spring()) {
+            stampType = .dislike
+        }
+        
+        flashButton(isLike: false)
+        
+        // Add delay before performing backend operations
+        Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
+            
+            do {
+                try await model.dislikeUser(topProfile)
+                await MainActor.run {
+                    stampType = nil
+                }
+            } catch {
+                print("Dislike error: \(error)")
+            }
         }
     }
     
