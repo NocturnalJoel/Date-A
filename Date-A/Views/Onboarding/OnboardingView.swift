@@ -56,7 +56,7 @@ struct OnboardingView: View {
         OnboardingSlide(
             emoji: "🎯",
             title: "This Is Only the Beginning",
-            description: "Our eventual goal is to let you search through profiles with every detail you can think of that aren't available on other dating apps like highest level of studies reached, income, quality of conversation, weight or even hair/eye color."
+            description: "Our eventual goal is to let you search through profiles with every detail you can think of that aren't available on other dating apps like highest level of studies reached, income, quality of conversation, ethnicity or even hair/eye color."
             ,
             additionalLines: [
                 "By using this app, you are helping us build the most precise tool on the market to find your soulmate."

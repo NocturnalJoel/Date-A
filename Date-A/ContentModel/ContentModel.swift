@@ -29,7 +29,7 @@ class ContentModel: NSObject, ObservableObject {
     private let stackSize = 10
     @Published var fcmToken: String?
     
-    private let minStackSize = 3  // Threshold to trigger refresh
+    private let minStackSize = 1 // Threshold to trigger refresh
         private let targetStackSize = 10
     
     @Published private var moonLevelStacks: [Int: [User]] = [0: [], 1: [], 2: [], 3: [], 4: []]
