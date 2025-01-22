@@ -102,12 +102,9 @@ struct DeleteAccountView: View {
         isDeleting = true
         
         // Log the deletion reason to Firebase Analytics
-        Analytics.logEvent("account_deletion", parameters: [
-            "reason": selectedReason
-        ])
-        
+       
         do {
-            try await model.deleteAccount()
+            try await model.deleteAccount(reason: selectedReason)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

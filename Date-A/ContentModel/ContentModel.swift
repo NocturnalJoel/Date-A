@@ -4,6 +4,7 @@ import FirebaseFirestore
 import FirebaseStorage
 import Photos
 import SwiftUI
+import FirebaseAnalytics
 
 class ContentModel: NSObject, ObservableObject {
     @AppStorage("isLoggedIn") var isLoggedIn = false
@@ -15,29 +16,18 @@ class ContentModel: NSObject, ObservableObject {
     private let db = Firestore.firestore()
     @Published var currentUserImages: [UIImage] = []
     @Published var preloadedImages: [String: UIImage] = [:]
-    
     @Published var isLoadingProfiles = false
     var lastFetchedUserId: String?
     @Published var unmatchedProfiles: [(id: String, name: String, imageUrl: String)] = []
     @Published var matches: [User] = []
     @Published var messages: [Message] = []
-    
-    
-    
-    
     @Published var profileStack: [User] = []  // Will hold 5 preloaded profiles
     private let stackSize = 10
     @Published var fcmToken: String?
-    
     private let minStackSize = 1 // Threshold to trigger refresh
-        private let targetStackSize = 10
-    
+    private let targetStackSize = 10
     @Published private var moonLevelStacks: [Int: [User]] = [0: [], 1: [], 2: [], 3: [], 4: []]
-        
-        // Track last fetched user ID for each stack
-
-        
-        // Track loading state for each stack
+    @Published var hasReachedEnd = false
     
     @Published var currentMoonLevel: Int = 2 {
         didSet {
@@ -47,15 +37,12 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    @Published var hasReachedEnd = false
-    
     private var imagePreloadQueue: OperationQueue = {
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 3 // Limit concurrent downloads
         return queue
     }()
     
-    // Enhance existing image cache
     var imageCache: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
         cache.countLimit = 200 // Increased to handle preloaded images
@@ -63,34 +50,16 @@ class ContentModel: NSObject, ObservableObject {
     }()
     
     
-    
     override init() {
         
         moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
-        
         super.init()
-        
         // Listen for FCM token updates
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(updateFCMToken),
                                                name: Notification.Name("FCMToken"),
                                                object: nil)
-        
-        
     }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     @MainActor
     func initializeStacks() {
@@ -187,13 +156,10 @@ class ContentModel: NSObject, ObservableObject {
             .limit(to: 10)
     }
 
-
     @MainActor
     private func updateDisplayStack() {
         profileStack = moonLevelStacks[currentMoonLevel] ?? []
     }
-    
-    
     
     // UI State checks
     @MainActor
@@ -211,10 +177,6 @@ class ContentModel: NSObject, ObservableObject {
         (moonLevelStacks[currentMoonLevel] ?? []).isEmpty
     }
 
-    
-    ///////
-    
-        
     func likeUser(_ likedUser: User) async throws {
         let likedUserId = likedUser.id
         
@@ -249,12 +211,15 @@ class ContentModel: NSObject, ObservableObject {
         
         try await batch.commit()
         
+        
         // Check for match
         let otherUserLikes = try await db.collection("users")
             .document(likedUserId)
             .collection("likes_sent")
             .document(currentUserId)
             .getDocument()
+        
+        logUserLike(targetUserAge: likedUser.age, matchOccurred: otherUserLikes.exists)
         
         if otherUserLikes.exists {
             try await createMatch(currentUserId: currentUserId, matchedUserId: likedUserId)
@@ -319,6 +284,7 @@ class ContentModel: NSObject, ObservableObject {
         }
         
         try await batch.commit()
+        logUserDislike(targetUserAge: dislikedUser.age)
         
         // Update local stacks
         await MainActor.run { [weak self] in
@@ -341,8 +307,6 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
 
-    
-    
     func preloadCurrentUserImages() async {
         guard let user = currentUser else {
             print("⚠️ No current user found")
@@ -415,9 +379,6 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    
-    
-    // Add a function to pre-fetch images
     private func preFetchMatchImages() async {
         for match in matches {
             guard let firstImageURL = match.pictureURLs.first,
@@ -474,12 +435,6 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    
-    
-    
-    
-    ///////////////////////////////////////////////////////////////
-    
     func signIn(email: String, password: String) async throws {
         print("🔐 Starting sign in process")
         
@@ -510,6 +465,7 @@ class ContentModel: NSObject, ObservableObject {
             await MainActor.run {
                 self.currentUser = decodedUser
                 self.isLoggedIn = true
+                logUserLogin()
                 print("✅ User successfully logged in and state updated")
             }
         } catch {
@@ -589,6 +545,7 @@ class ContentModel: NSObject, ObservableObject {
             print("📄 Creating Firestore document...")
             // Using Codable to automatically encode all fields, including email
             try await db.collection("users").document(userId).setData(from: newUser)
+            logUserSignup(userAge: age, userGender: gender)
             print("✅ Firestore document created successfully")
             
             DispatchQueue.main.async {
@@ -605,7 +562,6 @@ class ContentModel: NSObject, ObservableObject {
             throw error
         }
     }
-
     
     func checkAuthStatus() {
         if Auth.auth().currentUser != nil {
@@ -634,6 +590,7 @@ class ContentModel: NSObject, ObservableObject {
             try await updateUserFCMToken(userId: userId, token: "")
         }
         do {
+            logUserLogout()
             try Auth.auth().signOut()
             await MainActor.run {
                 isLoggedIn = false
@@ -738,7 +695,8 @@ class ContentModel: NSObject, ObservableObject {
         
         // Create match document in matches collection
         let matchData: [String: Any] = [
-            "users": [currentUserId, matchedUserId]
+            "users": [currentUserId, matchedUserId],
+            "createdAt": FieldValue.serverTimestamp()
         ]
         let matchRef = db.collection("matches").document(matchId)
         batch.setData(matchData, forDocument: matchRef)
@@ -803,6 +761,7 @@ class ContentModel: NSObject, ObservableObject {
         }
         
         let message = Message(senderId: currentUserId, text: text)
+        logMessageSent(matchId: matchId, messageLength: text.count)
         
         try await db.collection("matches")
             .document(matchId)
@@ -890,7 +849,9 @@ class ContentModel: NSObject, ObservableObject {
         await preloadCurrentUserImages()
     }
     
-    func deleteAccount() async throws {
+    func deleteAccount(reason: String? = nil) async throws {
+        logAccountDeletion(reason: reason)
+        
         guard let user = Auth.auth().currentUser,
               let currentUser = self.currentUser else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No current user found"])
@@ -976,6 +937,7 @@ class ContentModel: NSObject, ObservableObject {
         updates["socialRequest.\(currentUserId)"] = true
         
         try await matchRef.updateData(updates)
+        logSocialRequestSent(matchId: matchId)
     }
     
     func updateMatchDateRequest(matchId: String) async throws {
@@ -1003,6 +965,7 @@ class ContentModel: NSObject, ObservableObject {
         updates["dateRequest.\(currentUserId)"] = true
         
         try await matchRef.updateData(updates)
+        logDateRequestSent(matchId: matchId)
     }
     
     func fetchMatchState(matchId: String) async throws -> (hasSocialRequest: Bool, hasDateRequest: Bool) {
@@ -1073,6 +1036,8 @@ class ContentModel: NSObject, ObservableObject {
         ], forDocument: otherUserRef)
         
         try await batch.commit()
+        let duration = await getMatchDuration(matchId)
+        logUnmatch(matchId: matchId, matchDuration: duration, rating: rating)
     }
     
     func fetchUnmatchedProfiles() async throws -> [(id: String, name: String, imageUrl: String)] {
@@ -1152,6 +1117,117 @@ class ContentModel: NSObject, ObservableObject {
             self.fcmToken = token
             // Don't try to update Firestore here - wait for explicit login
             print("💾 Token stored locally, waiting for user login")
+        }
+    }
+    
+    // Analytics:
+    
+    func logUserSignup(userAge: Int, userGender: User.Gender) {
+            Analytics.logEvent("user_signup", parameters: [
+                "age": userAge,
+                "gender": userGender.rawValue,
+                "num_photos": currentUser?.pictureURLs.count ?? 0
+            ])
+        }
+
+        func logUserLogin() {
+            Analytics.logEvent("user_login", parameters: [
+                "user_id": Auth.auth().currentUser?.uid ?? "",
+                "has_matches": !matches.isEmpty
+            ])
+        }
+
+        func logUserLogout() {
+            Analytics.logEvent("user_logout", parameters: nil)
+        }
+
+        func logAccountDeletion(reason: String?) {
+            Analytics.logEvent("account_deletion", parameters: [
+                "reason": reason ?? "not_specified",
+                "account_lifetime_days": daysSinceSignup()
+            ])
+        }
+
+        // Interaction Events
+        func logUserLike(targetUserAge: Int, matchOccurred: Bool) {
+            Analytics.logEvent("user_like", parameters: [
+                "target_user_age": targetUserAge,
+                "resulted_in_match": matchOccurred,
+                "current_moon_level": currentMoonLevel
+            ])
+        }
+
+        func logUserDislike(targetUserAge: Int) {
+            Analytics.logEvent("user_dislike", parameters: [
+                "target_user_age": targetUserAge,
+                "current_moon_level": currentMoonLevel
+            ])
+        }
+
+        func logMatchInteraction(matchId: String, interactionType: String) {
+            Analytics.logEvent("match_interaction", parameters: [
+                "match_id": matchId,
+                "interaction_type": interactionType
+            ])
+        }
+
+        // Chat Events
+        func logMessageSent(matchId: String, messageLength: Int) {
+            Analytics.logEvent("message_sent", parameters: [
+                "match_id": matchId,
+                "message_length": messageLength
+            ])
+        }
+
+        func logUnmatch(matchId: String, matchDuration: TimeInterval, rating: Int) {
+            Analytics.logEvent("unmatch", parameters: [
+                "match_id": matchId,
+                "match_duration_hours": matchDuration/3600,
+                "final_rating": rating
+            ])
+        }
+
+        // Feature Usage Events
+        func logSocialRequestSent(matchId: String) {
+            Analytics.logEvent("social_request_sent", parameters: [
+                "match_id": matchId
+            ])
+        }
+
+        func logDateRequestSent(matchId: String) {
+            Analytics.logEvent("date_request_sent", parameters: [
+                "match_id": matchId
+            ])
+        }
+
+        // Stack Events
+        func logStackRefill(level: Int, newStackSize: Int) {
+            Analytics.logEvent("stack_refill", parameters: [
+                "moon_level": level,
+                "new_stack_size": newStackSize
+            ])
+        }
+
+        // Helper function for account age
+        private func daysSinceSignup() -> Int {
+            guard let creationDate = Auth.auth().currentUser?.metadata.creationDate else { return 0 }
+            return Calendar.current.dateComponents([.day], from: creationDate, to: Date()).day ?? 0
+        }
+    
+    private func getMatchDuration(_ matchId: String) async -> TimeInterval {
+        do {
+            let matchDoc = try await db.collection("matches").document(matchId).getDocument()
+            
+            // Get the match creation timestamp, defaulting to current time if not found
+            guard let data = matchDoc.data(),
+                  let timestamp = data["createdAt"] as? Timestamp else {
+                return 0
+            }
+            
+            return Date().timeIntervalSince(timestamp.dateValue())
+        } catch {
+            print("Error getting match duration: \(error)")
+            return 0
         }
     }
     
