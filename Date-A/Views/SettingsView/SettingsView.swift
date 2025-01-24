@@ -305,8 +305,7 @@ struct ButtonsSectionView: View {
                     GridItem(.flexible())
                 ], spacing: 12) {
                     ForEach([
-                        "Height", "Weight", "Hair Color", "Eye Color",
-                        "Education Level", "Income", "Ethnicity",
+                        "Height", "Weight", "Hair Color", "Eye Color", "Conversation Quality", "Education Level", "Income", "Ethnicity",
                         "Religious Beliefs", "Hair Length", "Facial Hair",
                         "Tattoos", "Piercings", "Has a Car",
                         "Has Their Own Place", "Diet", "Zodiac Sign",
