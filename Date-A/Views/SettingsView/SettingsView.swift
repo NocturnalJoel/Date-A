@@ -290,43 +290,89 @@ struct ButtonsSectionView: View {
     
     var body: some View {
         VStack(spacing: 16) {
+            // Coming Soon Section
+            VStack(alignment: .center, spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .foregroundColor(.gray)
+                    Text("Coming Soon...")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundColor(.gray)
+                }
+                
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 12) {
+                    ForEach([
+                        "Height", "Weight", "Hair Color", "Eye Color",
+                        "Education Level", "Income", "Ethnicity",
+                        "Religious Beliefs", "Hair Length", "Facial Hair",
+                        "Tattoos", "Piercings", "Has a Car",
+                        "Has Their Own Place", "Diet", "Zodiac Sign",
+                        "Has a Pet", "Politics", "Dating Intentions",
+                        "Children", "Substances"
+                    ], id: \.self) { criterion in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(criterion)
+                                .font(.system(size: 15))
+                                .foregroundColor(.gray)
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.gray.opacity(0.1))
+                                .frame(height: 24)
+                        }
+                        .padding(12)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                        .opacity(0.6)
+                    }
+                }
+            }
+            .padding(20)
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(16)
+            
             // Save Button
             Button {
-                            Task {
-                                do {
-                                    isSaving = true
-                                    try await model.updateUserSettings(
-                                        images: selectedImages,
-                                        minAge: minAge,
-                                        maxAge: maxAge,
-                                        genderPreference: selectedPreference
-                                    )
-                                    model.initializeStacks()
-                                    await refreshUserData() // Now this will work
-                                    isSaving = false
-                                } catch {
-                                    isSaving = false
-                                    print("❌ Error updating settings: \(error.localizedDescription)")
-                                }
-                            }
-                        } label: {
-                            if isSaving {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 56)
-                            } else {
-                                Text("Save Modifications")
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 56)
-                                    .background(Color.black)
-                                    .cornerRadius(16)
-                            }
-                        }
-                        .padding(.top, 8)
-                        .buttonStyle(.plain)
+                Task {
+                    do {
+                        isSaving = true
+                        try await model.updateUserSettings(
+                            images: selectedImages,
+                            minAge: minAge,
+                            maxAge: maxAge,
+                            genderPreference: selectedPreference
+                        )
+                        model.initializeStacks()
+                        await refreshUserData()
+                        isSaving = false
+                    } catch {
+                        isSaving = false
+                        print("❌ Error updating settings: \(error.localizedDescription)")
+                    }
+                }
+            } label: {
+                if isSaving {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                } else {
+                    Text("Save Modifications")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(Color.black)
+                        .cornerRadius(16)
+                }
+            }
+            .padding(.top, 8)
+            .buttonStyle(.plain)
             
             // Log Out Button
             Button {

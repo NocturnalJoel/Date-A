@@ -66,6 +66,8 @@ struct Date_AApp: App {
                     }
                 }
             }
+            .navigationViewStyle(.stack)
+            .ignoresSafeArea()
         }
     }
 }
