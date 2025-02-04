@@ -11,6 +11,7 @@ struct ImageGalleryView: View {
     @GestureState private var dragOffset: CGFloat = 0
     @EnvironmentObject var model: ContentModel
     @State private var cachedImages: [Int: UIImage] = [:]
+
     
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -141,6 +142,7 @@ struct ChatView: View {
     @State private var shouldPopToRoot = false
     @State private var cachedImage: UIImage?
     @State private var showingGallery = false
+    @State private var showingReportSheet = false
     
     @State private var showingManageSheet = false
     
@@ -200,6 +202,24 @@ struct ChatView: View {
                             .font(.title3)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
+                    }
+                    .frame(width: 100, height: 40)
+                }
+                .padding(.trailing, 4)
+                .buttonStyle(.plain)
+                
+                Button {
+                    showingReportSheet = true
+                } label: {
+                    ZStack {
+                        Capsule()
+                            .foregroundColor(Color.red.opacity(0.8))
+                        HStack(spacing: 4) {
+                            Text("Report")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                        }
+                        .foregroundColor(.white)
                     }
                     .frame(width: 100, height: 40)
                 }
@@ -274,6 +294,13 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showingManageSheet) {
             ManageMatchView(shouldPopToRoot: $shouldPopToRoot, matchId: matchId)
+        }
+        .sheet(isPresented: $showingReportSheet) {
+            ReportView(
+                shouldPopToRoot: $shouldPopToRoot,
+                matchId: matchId,
+                matchedUser: matchedUser
+            )
         }
         .onChange(of: shouldPopToRoot) { newValue in
             if newValue {

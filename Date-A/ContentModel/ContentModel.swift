@@ -1214,7 +1214,7 @@ class ContentModel: NSObject, ObservableObject {
             return Calendar.current.dateComponents([.day], from: creationDate, to: Date()).day ?? 0
         }
     
-    private func getMatchDuration(_ matchId: String) async -> TimeInterval {
+     func getMatchDuration(_ matchId: String) async -> TimeInterval {
         do {
             let matchDoc = try await db.collection("matches").document(matchId).getDocument()
             
