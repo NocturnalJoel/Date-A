@@ -293,8 +293,13 @@ struct ChatView: View {
             .environmentObject(model)
         }
         .sheet(isPresented: $showingManageSheet) {
-            ManageMatchView(shouldPopToRoot: $shouldPopToRoot, matchId: matchId)
-        }
+                    // This closure is called after the sheet is dismissed
+                    Task {
+                        try? await model.fetchMessages(for: matchId)
+                    }
+                } content: {
+                    ManageMatchView(shouldPopToRoot: $shouldPopToRoot, matchId: matchId)
+                }
         .sheet(isPresented: $showingReportSheet) {
             ReportView(
                 shouldPopToRoot: $shouldPopToRoot,

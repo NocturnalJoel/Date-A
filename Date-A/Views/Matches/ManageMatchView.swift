@@ -43,8 +43,11 @@ struct ManageMatchView: View {
                     hasSocialRequest = true
                     Task {
                         try? await model.updateMatchSocialRequest(matchId: matchId)
+                        
                     }
+                    
                 }
+                
             } label: {
                 ZStack {
                     Capsule()
@@ -63,6 +66,7 @@ struct ManageMatchView: View {
                     hasDateRequest = true
                     Task {
                         try? await model.updateMatchDateRequest(matchId: matchId)
+                        
                     }
                 }
             } label: {
