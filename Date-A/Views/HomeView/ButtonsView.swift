@@ -76,6 +76,10 @@ struct ButtonsView: View {
         Task {
             try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
             
+            await MainActor.run {
+                stampType = nil
+            }
+            
             do {
                 try await model.likeUser(topProfile)
                 
@@ -89,9 +93,7 @@ struct ButtonsView: View {
                     }
                 }
                 
-                await MainActor.run {
-                    stampType = nil
-                }
+                
             } catch {
                 print("Like error: \(error)")
             }
@@ -112,11 +114,13 @@ struct ButtonsView: View {
         Task {
             try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
             
+            await MainActor.run {
+                stampType = nil
+            }
+            
             do {
                 try await model.dislikeUser(topProfile)
-                await MainActor.run {
-                    stampType = nil
-                }
+                
             } catch {
                 print("Dislike error: \(error)")
             }

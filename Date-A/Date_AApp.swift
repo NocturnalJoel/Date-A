@@ -1,8 +1,10 @@
 import SwiftUI
 import FirebaseCore
+import FirebaseAuth
 import FirebaseMessaging
 import UserNotifications
 import Photos
+import FirebaseFirestore
 
 @main
 struct Date_AApp: App {
@@ -47,6 +49,13 @@ struct Date_AApp: App {
     
     init() {
         FirebaseApp.configure()
+        
+        let settings = FirestoreSettings()
+        settings.isPersistenceEnabled = true
+        let db = Firestore.firestore()
+        db.settings = settings
+        
+        
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         model.permissionGranted = (status == .authorized || status == .limited)
     }

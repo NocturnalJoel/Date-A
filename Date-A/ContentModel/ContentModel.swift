@@ -51,15 +51,58 @@ class ContentModel: NSObject, ObservableObject {
     
     
     override init() {
-        
         moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
         super.init()
+        
         // Listen for FCM token updates
         NotificationCenter.default.addObserver(self,
-                                               selector: #selector(updateFCMToken),
-                                               name: Notification.Name("FCMToken"),
-                                               object: nil)
+                                           selector: #selector(updateFCMToken),
+                                           name: Notification.Name("FCMToken"),
+                                           object: nil)
+        
+        // Check for existing Firebase session
+        if let firebaseUser = Auth.auth().currentUser {
+            if UserDefaults.standard.bool(forKey: "isUserLoggedIn") {
+                // Fetch user data from Firestore using Firebase user's ID
+                fetchUserData(uid: firebaseUser.uid)
+            } else {
+                // Clear Firebase session if UserDefaults shows logged out
+                try? Auth.auth().signOut()
+            }
+        }
+        
+        // Listen for auth state changes
+        Auth.auth().addStateDidChangeListener { [weak self] (auth, firebaseUser) in
+            if let firebaseUser = firebaseUser {
+                if UserDefaults.standard.bool(forKey: "isUserLoggedIn") {
+                    self?.fetchUserData(uid: firebaseUser.uid)
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self?.currentUser = nil
+                }
+            }
+        }
     }
+    
+    private func fetchUserData(uid: String) {
+            let docRef = db.collection("users").document(uid)
+            docRef.getDocument { [weak self] (document, error) in
+                if let document = document, document.exists {
+                    do {
+                        let user = try document.data(as: User.self)
+                        DispatchQueue.main.async {
+                            self?.currentUser = user
+                            self?.errorMessage = ""
+                        }
+                    } catch {
+                        print("Error decoding user: \(error)")
+                        self?.errorMessage = "Error fetching user data"
+                    
+                    }
+                }
+            }
+        }
     
     @MainActor
     func initializeStacks() {
@@ -467,6 +510,10 @@ class ContentModel: NSObject, ObservableObject {
                 self.isLoggedIn = true
                 logUserLogin()
                 print("✅ User successfully logged in and state updated")
+                
+                // Save authentication state
+                UserDefaults.standard.set(true, forKey: "isUserLoggedIn")
+                UserDefaults.standard.set(authResult.user.uid, forKey: "lastLoggedInUserId")
             }
         } catch {
             print("❌ Sign in error: \(error.localizedDescription)")
@@ -585,6 +632,7 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
+
     func signOut() async throws {
         if let userId = Auth.auth().currentUser?.uid {
             try await updateUserFCMToken(userId: userId, token: "")
@@ -595,6 +643,10 @@ class ContentModel: NSObject, ObservableObject {
             await MainActor.run {
                 isLoggedIn = false
                 currentUser = nil
+                
+                // Clear saved authentication state
+                UserDefaults.standard.removeObject(forKey: "isUserLoggedIn")
+                UserDefaults.standard.removeObject(forKey: "lastLoggedInUserId")
             }
         } catch {
             print("❌ Error signing out: \(error.localizedDescription)")

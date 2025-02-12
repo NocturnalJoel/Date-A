@@ -418,7 +418,7 @@ struct MessageComposerView: UIViewControllerRepresentable {
         composeVC.messageComposeDelegate = context.coordinator
         
         // Set the message body with your App Store link
-        composeVC.body = "Check out this amazing app! https://apps.apple.com/your-app-link" // Replace with your app link
+        composeVC.body = "Check out this app! https://apps.apple.com/ca/app/date-a/id6740785289" // Replace with your app link
         
         return composeVC
     }
@@ -545,7 +545,7 @@ struct ShareSheetView: View {
     @State private var showingAlert = false
     @State private var showingSystemShare = false
     
-    let appURL = "https://apps.apple.com/your-app-link" // Replace with your app link
+    let appURL = "https://apps.apple.com/ca/app/date-a/id6740785289" // Replace with your app link
     let shareMessage = "Check out this amazing app!" // Customize your share message
     
     let shareOptions: [ShareOption] = [
