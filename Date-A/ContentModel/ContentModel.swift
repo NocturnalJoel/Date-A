@@ -598,6 +598,11 @@ class ContentModel: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self.currentUser = newUser
                 self.isLoggedIn = true
+                
+                UserDefaults.standard.set(true, forKey: "isUserLoggedIn")
+                UserDefaults.standard.set(userId, forKey: "lastLoggedInUserId")
+                
+                
             }
             
             print("🎉 Account creation completed successfully!")
