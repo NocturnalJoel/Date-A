@@ -51,6 +51,8 @@ class ContentModel: NSObject, ObservableObject {
     
     
     override init() {
+        
+        
         moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
         super.init()
         
@@ -83,6 +85,9 @@ class ContentModel: NSObject, ObservableObject {
                 }
             }
         }
+        
+       
+        
     }
     
     private func fetchUserData(uid: String) {
@@ -106,6 +111,7 @@ class ContentModel: NSObject, ObservableObject {
     
     @MainActor
     func initializeStacks() {
+        print("it works")
         Task {
             moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
             profileStack.removeAll()
@@ -1193,6 +1199,13 @@ class ContentModel: NSObject, ObservableObject {
                 "has_matches": !matches.isEmpty
             ])
         }
+    
+    func logShareEvent(shareType: String) {
+        Analytics.logEvent("user_share", parameters: [
+            "share_type": shareType,
+            "user_id": currentUser?.id ?? "unknown"
+        ])
+    }
 
         func logUserLogout() {
             Analytics.logEvent("user_logout", parameters: nil)

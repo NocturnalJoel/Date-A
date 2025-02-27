@@ -540,6 +540,7 @@ struct ActivityViewController: UIViewControllerRepresentable {
 
 struct ShareSheetView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var model:ContentModel
     @Binding var hasSharedApp: Bool
     @State private var showingMessageComposer = false
     @State private var showingAlert = false
@@ -625,6 +626,10 @@ struct ShareSheetView: View {
     }
     
     private func handleShare(_ option: ShareOption) {
+        
+        model.logShareEvent(shareType: option.title)
+        
+        
         switch option.title {
         case "Messages":
             if MFMessageComposeViewController.canSendText() {

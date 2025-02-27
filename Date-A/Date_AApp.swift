@@ -56,6 +56,7 @@ struct Date_AApp: App {
         db.settings = settings
         
         
+        
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         model.permissionGranted = (status == .authorized || status == .limited)
     }

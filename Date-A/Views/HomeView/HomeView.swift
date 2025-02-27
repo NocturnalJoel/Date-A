@@ -1,14 +1,12 @@
-//  HomeView.swift
-//  Date-A
-//
-//  Created by Joël Lacoste-Therrien on 2024-11-10.
-//
+
+
 import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var model: ContentModel
     @State private var matchedUser: User?
     @State private var showMatchAnimation = false
     @State private var stampType: StampType?
+    @State private var isLoading = true
     
     var body: some View {
         NavigationStack {
@@ -78,7 +76,7 @@ struct HomeView: View {
                 Task {
                     
                     try? await model.refreshCurrentUser()
-                    model.initializeStacks()  // This now loads all stacks at once
+                    model.initializeStacks()// This now loads all stacks at once
                     try? await model.fetchMatches()
                     await model.loadUnmatchedProfiles()
                 }
