@@ -50,7 +50,7 @@ struct FirstView: View {
                 Text("A Product Of")
                     .foregroundColor(.gray)
                     
-                Image("medialoopholelogo")
+                Image("logoloopholemedia")
                     .resizable()
                     .frame(width: 75, height: 75)
                     .scaledToFit()
