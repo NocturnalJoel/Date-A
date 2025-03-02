@@ -14,16 +14,16 @@ struct SettingsView: View {
     @State private var selectedPreference: User.Gender = .male
     @State private var showPhotoPermissionAlert = false
     @State private var isPhotosLoading = false
-    @State private var isSaving = false // Added for ratio loading state
+    @State private var isSaving = false
     @State private var showDeleteAccount = false
-    
+    @State private var isSaved = false
+
     private func refreshUserData() async {
         do {
             if let user = model.currentUser {
                 selectedPreference = user.genderPreference
                 minAge = Double(user.minAgePreference)
                 maxAge = Double(user.maxAgePreference)
-                // Remove the conditional check
                 selectedImages = model.currentUserImages
             }
         } catch {
@@ -31,82 +31,116 @@ struct SettingsView: View {
         }
     }
     
-    
-    
     var body: some View {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 32) {
-                    HeaderView(dismiss: dismiss)
-                    
-                    VStack(spacing: 28) {
-                        PhotosSectionView(
-                            model: model,
-                            selectedImages: $selectedImages,
-                            selectedItems: $selectedItems,
-                            showPhotoPermissionAlert: $showPhotoPermissionAlert
-                        )
-                        
-                        AgePreferenceView(
-                            minAge: $minAge,
-                            maxAge: $maxAge
-                        )
-                        
-                        GenderPreferenceView(
-                            selectedPreference: $selectedPreference
-                        )
-                        
-                        RatioSectionView(
-                            ratio: model.currentUser?.likeRatio ?? 0.0
-                        )
-                    }
-                    
-                    ButtonsSectionView(
-                        model: model,
-                        isSaving: $isSaving,
-                        showDeleteAccount: $showDeleteAccount,
-                        selectedImages: selectedImages,
-                        minAge: minAge,
-                        maxAge: maxAge,
-                        selectedPreference: selectedPreference,
-                        refreshUserData: refreshUserData
-                    )
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 32)
-            }
-            .navigationBarHidden(true)
-            .onAppear {
-                Task {
-                    await refreshUserData()
-                 
-                        selectedImages = model.currentUserImages
-                    
-                }
-            }
-            .onChange(of: selectedItems) { items in
-                Task {
-                    selectedImages = []
-                    for item in items {
-                        if let data = try? await item.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) {
-                            selectedImages.append(image)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 32) {
+                HeaderView(dismiss: dismiss)
+                
+                // Save Modifications Button
+                Button {
+                    Task {
+                        do {
+                            isSaving = true
+                            try await model.updateUserSettings(
+                                images: selectedImages,
+                                minAge: minAge,
+                                maxAge: maxAge,
+                                genderPreference: selectedPreference
+                            )
+                            model.initializeStacks()
+                            await refreshUserData()
+                            isSaving = false
+                            isSaved = true
+                        } catch {
+                            isSaving = false
+                            print("❌ Error updating settings: \(error.localizedDescription)")
                         }
                     }
-                }
-            }
-            .alert("Photo Access Required", isPresented: $showPhotoPermissionAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Open Settings") {
-                    if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(settingsUrl)
+                } label: {
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                    } else {
+                        Text(isSaved ? "Modifications Saved" : "Save Modifications")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity) // Ensure full width
+                            .frame(height: 56)
+                            .background(isSaved ? Color.green : Color.black)
+                            .cornerRadius(16)
                     }
                 }
-            } message: {
-                Text("Please enable photo access in Settings to select photos for your profile.")
+                .buttonStyle(.plain)
+                .padding(.bottom, 16) // Removed horizontal padding to match width
+                
+                VStack(spacing: 28) {
+                    PhotosSectionView(
+                        model: model,
+                        selectedImages: $selectedImages,
+                        selectedItems: $selectedItems,
+                        showPhotoPermissionAlert: $showPhotoPermissionAlert
+                    )
+                    
+                    AgePreferenceView(
+                        minAge: $minAge,
+                        maxAge: $maxAge
+                    )
+                    
+                    GenderPreferenceView(
+                        selectedPreference: $selectedPreference
+                    )
+                    
+                    RatioSectionView(
+                        ratio: model.currentUser?.likeRatio ?? 0.0
+                    )
+                }
+                
+                ButtonsSectionView(
+                    model: model,
+                    isSaving: $isSaving,
+                    showDeleteAccount: $showDeleteAccount,
+                    selectedImages: selectedImages,
+                    minAge: minAge,
+                    maxAge: maxAge,
+                    selectedPreference: selectedPreference,
+                    refreshUserData: refreshUserData
+                )
+            }
+            .padding(.horizontal, 24) // Apply horizontal padding to the parent VStack
+            .padding(.bottom, 32)
+        }
+        .navigationBarHidden(true)
+        .onAppear {
+            Task {
+                await refreshUserData()
+                selectedImages = model.currentUserImages
+                isSaved = false
             }
         }
-    
-    
+        .onChange(of: selectedItems) { items in
+            Task {
+                selectedImages = []
+                for item in items {
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        selectedImages.append(image)
+                    }
+                }
+            }
+        }
+        .alert("Photo Access Required", isPresented: $showPhotoPermissionAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Open Settings") {
+                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(settingsUrl)
+                }
+            }
+        } message: {
+            Text("Please enable photo access in Settings to select photos for your profile.")
+        }
+    }
 }
 
 struct ShareOption: Identifiable {
@@ -138,71 +172,72 @@ struct HeaderView: View {
 }
 // Photos Section
 struct PhotosSectionView: View {
-   @ObservedObject var model: ContentModel
-   @Binding var selectedImages: [UIImage]
-   @Binding var selectedItems: [PhotosPickerItem]
-   @Binding var showPhotoPermissionAlert: Bool
-   
-   var body: some View {
-       VStack(alignment: .leading, spacing: 12) {
-           Text("Profile Photos")
-               .font(.system(size: 17, weight: .semibold, design: .rounded))
-               .foregroundColor(.gray)
-           
-           if model.permissionGranted {
-               ScrollView(.horizontal, showsIndicators: false) {
-                   HStack(spacing: 12) {
-                       ForEach(selectedImages.isEmpty ? model.currentUserImages.indices : selectedImages.indices, id: \.self) { index in
-                           Image(uiImage: selectedImages.isEmpty ? model.currentUserImages[index] : selectedImages[index])
-                               .resizable()
-                               .scaledToFill()
-                               .frame(width: 120, height: 160)
-                               .clipShape(RoundedRectangle(cornerRadius: 16))
-                       }
-                   }
-               }
-               .frame(height: 160)
-               
-               PhotosPicker(
-                   selection: $selectedItems,
-                   maxSelectionCount: 6,
-                   matching: .images
-               ) {
-                   HStack {
-                       Image(systemName: "photo.on.rectangle.angled")
-                       Text("Edit Photos")
-                   }
-                   .font(.system(size: 16, weight: .medium))
-                   .foregroundColor(.white)
-                   .frame(maxWidth: .infinity)
-                   .frame(height: 50)
-                   .background(Color.gray)
-                   .cornerRadius(12)
-               }
-           } else {
-               Button {
-                   Task {
-                       let granted = await model.requestPermission()
-                       if !granted {
-                           showPhotoPermissionAlert = true
-                       }
-                   }
-               } label: {
-                   HStack {
-                       Image(systemName: "photo.on.rectangle.angled")
-                       Text("Add Photos")
-                   }
-                   .font(.system(size: 16, weight: .medium))
-                   .foregroundColor(.white)
-                   .frame(maxWidth: .infinity)
-                   .frame(height: 50)
-                   .background(Color.gray)
-                   .cornerRadius(12)
-               }
-               .buttonStyle(.plain)
-           }
-       }
-   }
+    @ObservedObject var model: ContentModel
+    @Binding var selectedImages: [UIImage]
+    @Binding var selectedItems: [PhotosPickerItem]
+    @Binding var showPhotoPermissionAlert: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Profile Photos")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundColor(.gray)
+            
+            if model.permissionGranted {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(selectedImages.isEmpty ? model.currentUserImages.indices : selectedImages.indices, id: \.self) { index in
+                            Image(uiImage: selectedImages.isEmpty ? model.currentUserImages[index] : selectedImages[index])
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 120, height: 160)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                        }
+                    }
+                }
+                .frame(height: 160)
+                
+                PhotosPicker(
+                    selection: $selectedItems,
+                    maxSelectionCount: 6,
+                    matching: .images
+                ) {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle.angled")
+                        Text("Edit Photos")
+                    }
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white) // White text for better contrast
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Color.gray) // Gray background
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    Task {
+                        let granted = await model.requestPermission()
+                        if !granted {
+                            showPhotoPermissionAlert = true
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle.angled")
+                        Text("Add Photos")
+                    }
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white) // White text for better contrast
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Color.gray) // Gray background
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 }
 // Age Preference Section
 struct AgePreferenceView: View {
@@ -335,43 +370,6 @@ struct ButtonsSectionView: View {
             .background(Color.gray.opacity(0.1))
             .cornerRadius(16)
             
-            // Save Button
-            Button {
-                Task {
-                    do {
-                        isSaving = true
-                        try await model.updateUserSettings(
-                            images: selectedImages,
-                            minAge: minAge,
-                            maxAge: maxAge,
-                            genderPreference: selectedPreference
-                        )
-                        model.initializeStacks()
-                        await refreshUserData()
-                        isSaving = false
-                    } catch {
-                        isSaving = false
-                        print("❌ Error updating settings: \(error.localizedDescription)")
-                    }
-                }
-            } label: {
-                if isSaving {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                } else {
-                    Text("Save Modifications")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color.black)
-                        .cornerRadius(16)
-                }
-            }
-            .padding(.top, 8)
-            .buttonStyle(.plain)
             
             // Log Out Button
             Button {

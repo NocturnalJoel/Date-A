@@ -2,9 +2,6 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 
-import SwiftUI
-import FirebaseFirestore
-
 struct ManageMatchView: View {
     @EnvironmentObject var model: ContentModel
     @Environment(\.dismiss) var dismiss
@@ -38,35 +35,34 @@ struct ManageMatchView: View {
                 .padding(.horizontal)
                 .foregroundStyle(.gray)
             
+            // Exchange Socials Button
             Button {
                 withAnimation {
                     hasSocialRequest = true
                     Task {
                         try? await model.updateMatchSocialRequest(matchId: matchId)
-                        
                     }
-                    
                 }
-                
             } label: {
                 ZStack {
                     Capsule()
                         .fill(Color.blue.opacity(exchangeSocialsOpacity))
                         .frame(width: 250, height: 60)
-                    Text("Exchange Socials")
+                    Text(hasSocialRequest ? "Socials Request Sent" : "Exchange Socials")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                 }
             }
             .buttonStyle(.plain)
+            .disabled(hasSocialRequest) // Disable the button after the request is sent
             
+            // Go on a Date Button
             Button {
                 withAnimation {
                     hasDateRequest = true
                     Task {
                         try? await model.updateMatchDateRequest(matchId: matchId)
-                        
                     }
                 }
             } label: {
@@ -74,18 +70,20 @@ struct ManageMatchView: View {
                     Capsule()
                         .fill(Color.red.opacity(goOnDateOpacity))
                         .frame(width: 250, height: 60)
-                    Text("Go on a Date")
+                    Text(hasDateRequest ? "Date Request Sent" : "Go on a Date")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                 }
             }
             .buttonStyle(.plain)
+            .disabled(hasDateRequest) // Disable the button after the request is sent
             
             Text("At any time, you can unilaterally unmatch.")
                 .padding(.top)
                 .foregroundStyle(.gray)
             
+            // Unmatch Button
             Button {
                 withAnimation {
                     unmatchOpacity = 0.6

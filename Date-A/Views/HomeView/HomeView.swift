@@ -20,49 +20,50 @@ struct HomeView: View {
                 Spacer()
                 
                 ZStack {
-                    if !model.checkProfileVisibility() {
-                        if model.hasReachedEndForCurrentLevel() {
-                            // Empty state view
-                            VStack(spacing: 16) {
-                                Text("🌌")
-                                    .font(.system(size: 150, weight: .bold))
-                                Text("The Sky Is Empty Tonight")
-                                    .font(.title3)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.gray)
-                                Text("Change your filters to see more profiles")
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray.opacity(0.8))
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color(.systemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 20))
-                            .shadow(radius: 5)
-                            .padding()
-                        } else {
-                            // Loading placeholder
-                            ProfileCardPlaceholder()
-                                .background(Color(.systemBackground))
-                        }
-                    } else {
-                        // Show profiles
+                    // Always show shimmer while loading
+                    if isLoading {
+                        ProfileCardPlaceholder()
+                            .transition(.opacity)
+                    }
+                    
+                    // Show profiles when loaded and available
+                    if !isLoading && model.checkProfileVisibility() {
                         ForEach(Array(model.profileStack.prefix(2).enumerated().reversed()), id: \.element.id) { index, user in
                             ProfileCardView(user: user, stampType: $stampType)
                                 .opacity(index == 0 ? 1 : 0.05)
                                 .background(Color(.systemBackground))
                                 .id("\(user.id)_\(index)")
+                                .transition(.opacity)
                         }
                     }
+                    
+                    // Show empty state when loaded but no profiles
+                    if !isLoading && model.hasReachedEndForCurrentLevel() {
+                        VStack(spacing: 16) {
+                            Text("🌌")
+                                .font(.system(size: 150, weight: .bold))
+                            Text("The Sky Is Empty Tonight")
+                                .font(.title3)
+                                .fontWeight(.medium)
+                                .foregroundColor(.gray)
+                            Text("Change your filters to see more profiles")
+                                .font(.subheadline)
+                                .foregroundColor(.gray.opacity(0.8))
+                        }
+                        .transition(.opacity)
+                    }
                 }
-                .background(Color(.systemBackground))
+                .animation(.easeInOut(duration: 0.3), value: isLoading)
                 .frame(height: 500)
                 
                 Spacer()
                 
                 ButtonsView(showMatchAnimation: $showMatchAnimation,
-                          matchedUser: $matchedUser,
-                          stampType: $stampType)
+                           matchedUser: $matchedUser,
+                           stampType: $stampType)
                     .environmentObject(model)
+                    .opacity(isLoading ? 0 : 1) // Hide buttons while loading
+                    .animation(.easeInOut(duration: 0.3), value: isLoading)
             }
             .navigationBarHidden(true)
             .overlay(
@@ -73,12 +74,31 @@ struct HomeView: View {
                 }
             )
             .onAppear {
+                isLoading = true
+                
                 Task {
-                    
-                    try? await model.refreshCurrentUser()
-                    model.initializeStacks()// This now loads all stacks at once
-                    try? await model.fetchMatches()
-                    await model.loadUnmatchedProfiles()
+                    do {
+                        // Start all async operations concurrently
+                        async let refreshUser = try model.refreshCurrentUser()
+                        async let initializeStacks = model.initializeStacks()
+                        async let fetchMatches = try model.fetchMatches()
+                        async let loadUnmatched = model.loadUnmatchedProfiles()
+                        
+                        // Wait for all operations to complete
+                        _ = try await (refreshUser, initializeStacks, fetchMatches, loadUnmatched)
+                        
+                        // Update UI state
+                        await MainActor.run {
+                            isLoading = false
+                        }
+                    } catch {
+                        // Handle any errors that occur during the async operations
+                        await MainActor.run {
+                            isLoading = false
+                            model.errorMessage = "Failed to load data. Please try again."
+                            print("Error loading data: \(error.localizedDescription)")
+                        }
+                    }
                 }
             }
         }
