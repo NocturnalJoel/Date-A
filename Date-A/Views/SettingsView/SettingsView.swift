@@ -20,11 +20,16 @@ struct SettingsView: View {
 
     private func refreshUserData() async {
         do {
+            // Fetch the latest user data from Firestore
+            try await model.refreshCurrentUser()
+            
+            // Update local state with the refreshed data
             if let user = model.currentUser {
                 selectedPreference = user.genderPreference
                 minAge = Double(user.minAgePreference)
                 maxAge = Double(user.maxAgePreference)
                 selectedImages = model.currentUserImages
+                print("✅ Refreshed user data. Selected images: \(selectedImages.count)")
             }
         } catch {
             print("❌ Error refreshing user data: \(error.localizedDescription)")
@@ -39,23 +44,25 @@ struct SettingsView: View {
                 // Save Modifications Button
                 Button {
                     Task {
-                        do {
-                            isSaving = true
-                            try await model.updateUserSettings(
-                                images: selectedImages,
-                                minAge: minAge,
-                                maxAge: maxAge,
-                                genderPreference: selectedPreference
-                            )
-                            model.initializeStacks()
-                            await refreshUserData()
-                            isSaving = false
-                            isSaved = true
-                        } catch {
-                            isSaving = false
-                            print("❌ Error updating settings: \(error.localizedDescription)")
+                            do {
+                                isSaving = true
+                                try await model.updateUserSettings(
+                                    images: selectedImages,
+                                    minAge: minAge,
+                                    maxAge: maxAge,
+                                    genderPreference: selectedPreference
+                                )
+                                model.initializeStacks()
+                                await refreshUserData()
+                                selectedItems = []
+                                isSaving = false
+                                isSaved = true
+                                print("✅ Saved modifications. Selected images: \(selectedImages.count)")
+                            } catch {
+                                isSaving = false
+                                print("❌ Error updating settings: \(error.localizedDescription)")
+                            }
                         }
-                    }
                 } label: {
                     if isSaving {
                         ProgressView()
@@ -115,6 +122,7 @@ struct SettingsView: View {
         .onAppear {
             Task {
                 await refreshUserData()
+                selectedImages = []
                 selectedImages = model.currentUserImages
                 isSaved = false
             }

@@ -674,29 +674,25 @@ class ContentModel: NSObject, ObservableObject {
         let storage = Storage.storage()
         var pictureURLs: [String] = []
         
-        // Only process images if they've changed from current user's images
-        if images.count != updatedUser.pictureURLs.count {
-            // Delete existing images from Storage
-            for urlString in updatedUser.pictureURLs {
-                if let url = URL(string: urlString) {
-                    let imagePath = storage.reference(forURL: url.absoluteString)
-                    try? await imagePath.delete()
-                }
+        // Upload new images
+        for (index, image) in images.enumerated() {
+            guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+                print("❌ Failed to convert image to data")
+                continue
             }
             
-            // Upload new images
-            for (index, image) in images.enumerated() {
-                guard let imageData = image.jpegData(compressionQuality: 0.7) else { continue }
-                
-                let imagePath = "users/\(updatedUser.id)/profile_\(index).jpg"
-                let imageRef = storage.reference().child(imagePath)
-                
+            let imagePath = "users/\(updatedUser.id)/profile_\(index).jpg"
+            let imageRef = storage.reference().child(imagePath)
+            
+            do {
                 _ = try await imageRef.putDataAsync(imageData)
                 let downloadURL = try await imageRef.downloadURL()
                 pictureURLs.append(downloadURL.absoluteString)
+                print("✅ Successfully uploaded image: \(downloadURL.absoluteString)")
+            } catch {
+                print("❌ Error uploading image: \(error.localizedDescription)")
+                throw error
             }
-        } else {
-            pictureURLs = updatedUser.pictureURLs
         }
         
         // Update user model
@@ -705,20 +701,25 @@ class ContentModel: NSObject, ObservableObject {
         updatedUser.maxAgePreference = Int(maxAge)
         updatedUser.genderPreference = genderPreference
         
-        // Create dictionary for Firestore update
-        let userData: [String: Any] = [
-            "pictureURLs": pictureURLs,
-            "minAgePreference": Int(minAge),
-            "maxAgePreference": Int(maxAge),
-            "genderPreference": genderPreference.rawValue
-        ]
-        
         // Update Firestore
-        try await db.collection("users").document(updatedUser.id).updateData(userData)
+        do {
+            try await db.collection("users").document(updatedUser.id).updateData([
+                "pictureURLs": pictureURLs,
+                "minAgePreference": Int(minAge),
+                "maxAgePreference": Int(maxAge),
+                "genderPreference": genderPreference.rawValue
+            ])
+            print("✅ Successfully updated Firestore document")
+        } catch {
+            print("❌ Error updating Firestore document: \(error.localizedDescription)")
+            throw error
+        }
         
-        // Update published current user
+        // Update local state
         await MainActor.run {
             self.currentUser = updatedUser
+            self.currentUserImages = images
+            print("✅ Updated currentUser and currentUserImages")
         }
     }
     
@@ -908,7 +909,10 @@ class ContentModel: NSObject, ObservableObject {
         
         await MainActor.run {
             self.currentUser = userData
+            print("✅ Refreshed current user. Picture URLs: \(userData.pictureURLs)")
         }
+        
+        // Preload the current user's images
         await preloadCurrentUserImages()
     }
     
