@@ -44,25 +44,25 @@ struct SettingsView: View {
                 // Save Modifications Button
                 Button {
                     Task {
-                            do {
-                                isSaving = true
-                                try await model.updateUserSettings(
-                                    images: selectedImages,
-                                    minAge: minAge,
-                                    maxAge: maxAge,
-                                    genderPreference: selectedPreference
-                                )
-                                model.initializeStacks()
-                                await refreshUserData()
-                                selectedItems = []
-                                isSaving = false
-                                isSaved = true
-                                print("✅ Saved modifications. Selected images: \(selectedImages.count)")
-                            } catch {
-                                isSaving = false
-                                print("❌ Error updating settings: \(error.localizedDescription)")
-                            }
+                        do {
+                            isSaving = true
+                            try await model.updateUserSettings(
+                                images: selectedImages,
+                                minAge: minAge,
+                                maxAge: maxAge,
+                                genderPreference: selectedPreference
+                            )
+                            model.initializeStacks()
+                            await refreshUserData()
+                            selectedItems = []
+                            isSaving = false
+                            isSaved = true
+                            print("✅ Saved modifications. Selected images: \(selectedImages.count)")
+                        } catch {
+                            isSaving = false
+                            print("❌ Error updating settings: \(error.localizedDescription)")
                         }
+                    }
                 } label: {
                     if isSaving {
                         ProgressView()
@@ -73,14 +73,14 @@ struct SettingsView: View {
                         Text(isSaved ? "Modifications Saved" : "Save Modifications")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.white)
-                            .frame(maxWidth: .infinity) // Ensure full width
+                            .frame(maxWidth: .infinity)
                             .frame(height: 56)
                             .background(isSaved ? Color.green : Color.black)
                             .cornerRadius(16)
                     }
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, 16) // Removed horizontal padding to match width
+                .padding(.bottom, 16)
                 
                 VStack(spacing: 28) {
                     PhotosSectionView(
@@ -115,7 +115,7 @@ struct SettingsView: View {
                     refreshUserData: refreshUserData
                 )
             }
-            .padding(.horizontal, 24) // Apply horizontal padding to the parent VStack
+            .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
         .navigationBarHidden(true)
@@ -194,12 +194,30 @@ struct PhotosSectionView: View {
             if model.permissionGranted {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        ForEach(selectedImages.isEmpty ? model.currentUserImages.indices : selectedImages.indices, id: \.self) { index in
-                            Image(uiImage: selectedImages.isEmpty ? model.currentUserImages[index] : selectedImages[index])
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 120, height: 160)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                        ForEach(Array(selectedImages.isEmpty ? model.currentUserImages.enumerated() : selectedImages.enumerated()), id: \.offset) { index, image in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 120, height: 160)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                                
+                                // Delete Button
+                                Button(action: {
+                                    if selectedImages.isEmpty {
+                                        model.currentUserImages.remove(at: index)
+                                    } else {
+                                        selectedImages.remove(at: index)
+                                    }
+                                }) {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.white)
+                                        .background(Color.red)
+                                        .clipShape(Circle())
+                                        .padding(4)
+                                }
+                            }
                         }
                     }
                 }
@@ -215,10 +233,10 @@ struct PhotosSectionView: View {
                         Text("Edit Photos")
                     }
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white) // White text for better contrast
+                    .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Color.gray) // Gray background
+                    .background(Color.gray)
                     .cornerRadius(12)
                 }
                 .buttonStyle(.plain)
@@ -236,10 +254,10 @@ struct PhotosSectionView: View {
                         Text("Add Photos")
                     }
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white) // White text for better contrast
+                    .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Color.gray) // Gray background
+                    .background(Color.gray)
                     .cornerRadius(12)
                 }
                 .buttonStyle(.plain)
