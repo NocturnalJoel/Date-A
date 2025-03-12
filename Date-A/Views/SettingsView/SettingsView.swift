@@ -24,12 +24,14 @@ struct SettingsView: View {
             try await model.refreshCurrentUser()
             
             // Update local state with the refreshed data
-            if let user = model.currentUser {
-                selectedPreference = user.genderPreference
-                minAge = Double(user.minAgePreference)
-                maxAge = Double(user.maxAgePreference)
-                selectedImages = model.currentUserImages
-                print("✅ Refreshed user data. Selected images: \(selectedImages.count)")
+            await MainActor.run {
+                if let user = model.currentUser {
+                    selectedPreference = user.genderPreference
+                    minAge = Double(user.minAgePreference)
+                    maxAge = Double(user.maxAgePreference)
+                    selectedImages = model.currentUserImages
+                    print("✅ Refreshed user data. Selected images: \(selectedImages.count)")
+                }
             }
         } catch {
             print("❌ Error refreshing user data: \(error.localizedDescription)")
@@ -41,30 +43,57 @@ struct SettingsView: View {
             VStack(spacing: 32) {
                 HeaderView(dismiss: dismiss)
                 
+                
+              //  Text(isSaving ? "Saving..." : "")
+                
+                if isSaving {
+                    ProgressView()
+                }
+                
+                
+                
                 // Save Modifications Button
                 Button {
+                    print("Save button tapped") // Debug
                     Task {
-                        do {
+                        print("Task started") // Debug
+                        await MainActor.run {
                             isSaving = true
+                            print("isSaving set to true") // Debug
+                        }
+                        
+                        do {
                             try await model.updateUserSettings(
                                 images: selectedImages,
                                 minAge: minAge,
                                 maxAge: maxAge,
                                 genderPreference: selectedPreference
                             )
+                            print("Settings updated successfully") // Debug
+                            
                             model.initializeStacks()
                             await refreshUserData()
                             selectedItems = []
-                            isSaving = false
-                            isSaved = true
-                            print("✅ Saved modifications. Selected images: \(selectedImages.count)")
+                            
+                            // Add a slight delay to show the loading indicator
+                            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                            print("Delay completed") // Debug
+                            
+                            await MainActor.run {
+                                isSaving = false
+                                isSaved = true
+                                print("isSaving set to false, isSaved set to true") // Debug
+                            }
                         } catch {
-                            isSaving = false
-                            print("❌ Error updating settings: \(error.localizedDescription)")
+                            await MainActor.run {
+                                isSaving = false
+                                print("Error updating settings: \(error.localizedDescription)") // Debug
+                            }
                         }
                     }
                 } label: {
                     if isSaving {
+                        // Show a loading indicator while saving
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .frame(maxWidth: .infinity)
@@ -77,8 +106,10 @@ struct SettingsView: View {
                             .frame(height: 56)
                             .background(isSaved ? Color.green : Color.black)
                             .cornerRadius(16)
+                            .animation(.easeInOut(duration: 0.3), value: isSaved) // Animate the background color change
                     }
                 }
+                .disabled(isSaving) // Disable the button while saving
                 .buttonStyle(.plain)
                 .padding(.bottom, 16)
                 
@@ -179,11 +210,17 @@ struct HeaderView: View {
     }
 }
 // Photos Section
+import SwiftUI
+import PhotosUI
+
 struct PhotosSectionView: View {
     @ObservedObject var model: ContentModel
     @Binding var selectedImages: [UIImage]
     @Binding var selectedItems: [PhotosPickerItem]
     @Binding var showPhotoPermissionAlert: Bool
+    
+    // State to track the currently dragged item
+    @State private var draggingItem: UIImage?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -201,6 +238,16 @@ struct PhotosSectionView: View {
                                     .scaledToFill()
                                     .frame(width: 120, height: 160)
                                     .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    .onDrag {
+                                        // Set the currently dragged item
+                                        draggingItem = image
+                                        return NSItemProvider(object: image as UIImage)
+                                    }
+                                    .onDrop(of: [.image], delegate: DropViewDelegate(
+                                        item: image,
+                                        items: selectedImages.isEmpty ? $model.currentUserImages : $selectedImages,
+                                        draggingItem: $draggingItem
+                                    ))
                                 
                                 // Delete Button
                                 Button(action: {
@@ -261,6 +308,34 @@ struct PhotosSectionView: View {
                     .cornerRadius(12)
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+// Drop Delegate to handle reordering
+struct DropViewDelegate: DropDelegate {
+    let item: UIImage
+    @Binding var items: [UIImage]
+    @Binding var draggingItem: UIImage?
+    
+    func performDrop(info: DropInfo) -> Bool {
+        // Reset the dragging item
+        draggingItem = nil
+        return true
+    }
+    
+    func dropEntered(info: DropInfo) {
+        // Reorder the items when an item is dragged over another
+        guard let draggingItem = draggingItem,
+              let fromIndex = items.firstIndex(of: draggingItem),
+              let toIndex = items.firstIndex(of: item) else {
+            return
+        }
+        
+        if fromIndex != toIndex {
+            withAnimation {
+                items.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
             }
         }
     }
