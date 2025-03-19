@@ -186,6 +186,12 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
 
+    @MainActor
+        func resetState() {
+            self.currentUser = nil
+            self.currentUserImages = []
+            self.isLoggedIn = false
+        }
     
     private func getFilteredIds(for userId: String) async throws -> (Set<String>, Set<String>) {
         async let dislikedDocs = db.collection("users").document(userId).collection("dislikes").getDocuments()

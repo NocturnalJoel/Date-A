@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAnalytics
+import FirebaseAuth
 
 struct DeleteAccountView: View {
     @Environment(\.dismiss) private var dismiss
@@ -101,15 +102,27 @@ struct DeleteAccountView: View {
     private func deleteAccount() async {
         isDeleting = true
         
-        // Log the deletion reason to Firebase Analytics
-       
         do {
+            // Delete account from database
             try await model.deleteAccount(reason: selectedReason)
+            
+            // Sign out the user
+            try Auth.auth().signOut()
+            
+            // Reset app state
+            await MainActor.run {
+                model.resetState()
+                isDeleting = false
+            }
+            
+            // Dismiss the view
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
-            showError = true
-            isDeleting = false
+            await MainActor.run {
+                errorMessage = "Failed to delete account: \(error.localizedDescription)"
+                showError = true
+                isDeleting = false
+            }
         }
     }
 }
