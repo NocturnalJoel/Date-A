@@ -788,10 +788,10 @@ class ContentModel: NSObject, ObservableObject {
             .collection("matches")
             .getDocuments()
         
-        var fetchedUsers: [User] = []
+        var matchesWithLastActivity: [(User, Date)] = []
         
         for matchDoc in matchDocs.documents {
-            // Get the full match document to get both user IDs
+            // Get the full match document to get both user IDs and lastActivity
             let match = try await db.collection("matches")
                 .document(matchDoc.documentID)
                 .getDocument()
@@ -807,14 +807,26 @@ class ContentModel: NSObject, ObservableObject {
                     .getDocument()
                 
                 if let matchedUser = try? userDoc.data(as: User.self) {
-                    fetchedUsers.append(matchedUser)
+                    // Fetch the lastActivity timestamp from the match document
+                    let lastActivity = (matchData["lastActivity"] as? Timestamp)?.dateValue() ?? Date.distantPast
+                    
+                    // Pair the match with its lastActivity timestamp
+                    matchesWithLastActivity.append((matchedUser, lastActivity))
                 }
             }
         }
         
+        // Sort matches by lastActivity (most recent first)
+        let sortedMatches = matchesWithLastActivity
+            .sorted { $0.1 > $1.1 } // Sort by lastActivity
+            .map { $0.0 } // Extract the User objects
+        
+        // Update the matches array
         await MainActor.run {
-            self.matches = fetchedUsers
+            self.matches = sortedMatches
         }
+        
+        // Pre-fetch match images
         await preFetchMatchImages()
     }
     

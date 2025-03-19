@@ -45,6 +45,13 @@ exports.onNewMatch = onDocumentCreated('matches/{matchId}', async (event) => {
                     type: 'match',
                     matchId: event.params.matchId,
                     otherUserId: users[1]
+                },
+                apns: { // Add this block
+                    payload: {
+                        aps: {
+                            sound: "default" // Enable sound for iOS
+                        }
+                    }
                 }
             });
         }
@@ -61,6 +68,13 @@ exports.onNewMatch = onDocumentCreated('matches/{matchId}', async (event) => {
                     type: 'match',
                     matchId: event.params.matchId,
                     otherUserId: users[0]
+                },
+                apns: { // Add this block
+                    payload: {
+                        aps: {
+                            sound: "default" // Enable sound for iOS
+                        }
+                    }
                 }
             });
         }
@@ -131,7 +145,8 @@ exports.onNewMessage = onDocumentCreated('matches/{matchId}/messages/{messageId}
                     payload: {
                         aps: {
                             'mutable-content': 1,
-                            'content-available': 1
+                            'content-available': 1,
+    sound: "default" // Add this line
                         }
                     }
                 }
@@ -167,6 +182,13 @@ exports.onUnmatch = onDocumentCreated('users/{userId}/unmatches/{unmatchId}', as
                 },
                 data: {
                     type: 'unmatch'
+                },
+                apns: { // Add this block
+                    payload: {
+                        aps: {
+                            sound: "default" // Enable sound for iOS
+                        }
+                    }
                 }
             };
 
@@ -229,7 +251,14 @@ exports.onMatchUpdate = onDocumentUpdated('matches/{matchId}', async (event) => 
                         data: {
                             type: 'socialConfirm',
                             matchId: event.params.matchId
+                        },
+                apns: { // Add this block
+                    payload: {
+                        aps: {
+                            sound: "default" // Enable sound for iOS
                         }
+                    }
+                }
                     });
                 }
             });
@@ -287,7 +316,14 @@ exports.onMatchUpdate = onDocumentUpdated('matches/{matchId}', async (event) => 
                         data: {
                             type: 'dateConfirm',
                             matchId: event.params.matchId
+                        },
+                apns: { // Add this block
+                    payload: {
+                        aps: {
+                            sound: "default" // Enable sound for iOS
                         }
+                    }
+                }
                     });
                 }
             });

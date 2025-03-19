@@ -138,12 +138,11 @@ struct ChatView: View {
     @EnvironmentObject var model: ContentModel
     @State private var messageText = ""
     @State private var isLoading = false
-    @FocusState private var isFocused: Bool
+    @FocusState private var isFocused: Bool // Track keyboard focus
     @State private var shouldPopToRoot = false
     @State private var cachedImage: UIImage?
     @State private var showingGallery = false
     @State private var showingReportSheet = false
-    
     @State private var showingManageSheet = false
     
     var body: some View {
@@ -231,14 +230,41 @@ struct ChatView: View {
             .shadow(color: Color.black.opacity(0.05), radius: 5, y: 5)
             
             // Messages
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(model.messages) { message in
-                        MessageBubble(message: message, isSender: message.senderId == Auth.auth().currentUser?.uid)
-                            .padding(.horizontal)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(model.messages) { message in
+                            MessageBubble(message: message, isSender: message.senderId == Auth.auth().currentUser?.uid)
+                                .padding(.horizontal)
+                                .id(message.id) // Assign a unique ID to each message
+                        }
+                    }
+                    .padding(.vertical)
+                }
+                .onAppear {
+                    // Scroll to the last message when the view appears
+                    if let lastMessage = model.messages.last {
+                        withAnimation {
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
                     }
                 }
-                .padding(.vertical)
+                .onChange(of: model.messages) { _ in
+                    // Scroll to the last message when new messages are added
+                    if let lastMessage = model.messages.last {
+                        withAnimation {
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
+                    }
+                }
+                .onChange(of: isFocused) { isFocused in
+                    // Scroll to the last message when the keyboard appears
+                    if isFocused, let lastMessage = model.messages.last {
+                        withAnimation {
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
+                    }
+                }
             }
             
             // Message Input
@@ -247,7 +273,7 @@ struct ChatView: View {
                     .padding(12)
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(20)
-                    .focused($isFocused)
+                    .focused($isFocused) // Bind to keyboard focus
                 
                 Button {
                     Task {
@@ -293,13 +319,13 @@ struct ChatView: View {
             .environmentObject(model)
         }
         .sheet(isPresented: $showingManageSheet) {
-                    // This closure is called after the sheet is dismissed
-                    Task {
-                        try? await model.fetchMessages(for: matchId)
-                    }
-                } content: {
-                    ManageMatchView(shouldPopToRoot: $shouldPopToRoot, matchId: matchId)
-                }
+            // This closure is called after the sheet is dismissed
+            Task {
+                try? await model.fetchMessages(for: matchId)
+            }
+        } content: {
+            ManageMatchView(shouldPopToRoot: $shouldPopToRoot, matchId: matchId)
+        }
         .sheet(isPresented: $showingReportSheet) {
             ReportView(
                 shouldPopToRoot: $shouldPopToRoot,

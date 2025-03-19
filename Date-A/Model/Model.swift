@@ -66,7 +66,7 @@ struct User: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
-struct Message: Identifiable, Codable {
+struct Message: Identifiable, Codable, Equatable {
     let id: String
     let senderId: String
     let text: String
