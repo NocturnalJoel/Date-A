@@ -789,47 +789,65 @@ class ContentModel: NSObject, ObservableObject {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
         }
         
-        let matchDocs = try await db.collection("users")
-            .document(currentUserId)
-            .collection("matches")
-            .getDocuments()
+        // Fetch all matches where the current user is part of the match
+        let matchesQuery = db.collection("matches")
+            .whereField("users", arrayContains: currentUserId)
+        
+        let matchDocs = try await matchesQuery.getDocuments()
+        
+        print("Fetched matches count: \(matchDocs.documents.count)") // Debug print
         
         var matchesWithLastActivity: [(User, Date)] = []
+        var matchesWithoutLastActivity: [User] = []
         
+        // Process each match document
         for matchDoc in matchDocs.documents {
-            // Get the full match document to get both user IDs and lastActivity
-            let match = try await db.collection("matches")
-                .document(matchDoc.documentID)
-                .getDocument()
+            let matchData = matchDoc.data()
             
-            if let matchData = match.data(),
-               let userIds = matchData["users"] as? [String] {
-                // Get the ID of the other user
-                let matchedUserId = userIds.first { $0 != currentUserId } ?? ""
-                
-                // Get the matched user's data
-                let userDoc = try await db.collection("users")
-                    .document(matchedUserId)
-                    .getDocument()
-                
-                if let matchedUser = try? userDoc.data(as: User.self) {
-                    // Fetch the lastActivity timestamp from the match document
-                    let lastActivity = (matchData["lastActivity"] as? Timestamp)?.dateValue() ?? Date.distantPast
-                    
-                    // Pair the match with its lastActivity timestamp
-                    matchesWithLastActivity.append((matchedUser, lastActivity))
+            // Fetch the lastActivity timestamp (if it exists)
+            let lastActivity = (matchData["lastActivity"] as? Timestamp)?.dateValue()
+            
+            // Fetch all users in the match (excluding the current user)
+            if let userIds = matchData["users"] as? [String] {
+                for userId in userIds where userId != currentUserId {
+                    do {
+                        // Fetch the matched user's data
+                        let userDoc = try await db.collection("users")
+                            .document(userId)
+                            .getDocument()
+                        
+                        // Check if the user document exists
+                        if userDoc.exists, let matchedUser = try? userDoc.data(as: User.self) {
+                            if let lastActivity = lastActivity {
+                                // Add to matchesWithLastActivity if lastActivity exists
+                                matchesWithLastActivity.append((matchedUser, lastActivity))
+                            } else {
+                                // Add to matchesWithoutLastActivity if lastActivity is nil
+                                matchesWithoutLastActivity.append(matchedUser)
+                            }
+                        } else {
+                            print("User document does not exist for ID: \(userId)")
+                        }
+                    } catch {
+                        print("Error fetching user document for ID: \(userId): \(error)")
+                    }
                 }
             }
         }
         
-        // Sort matches by lastActivity (most recent first)
-        let sortedMatches = matchesWithLastActivity
+        // Sort matchesWithLastActivity by lastActivity (most recent first)
+        let sortedMatchesWithLastActivity = matchesWithLastActivity
             .sorted { $0.1 > $1.1 } // Sort by lastActivity
             .map { $0.0 } // Extract the User objects
         
-        // Update the matches array
+        // Combine the sorted matches and unsorted matches
+        let allMatches = sortedMatchesWithLastActivity + matchesWithoutLastActivity
+        
+        print("Total matches count: \(allMatches.count)") // Debug print
+        
+        // Update the matches array on the main thread
         await MainActor.run {
-            self.matches = sortedMatches
+            self.matches = allMatches
         }
         
         // Pre-fetch match images
