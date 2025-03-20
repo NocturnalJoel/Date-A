@@ -863,6 +863,14 @@ class ContentModel: NSObject, ObservableObject {
         let message = Message(senderId: currentUserId, text: text)
         logMessageSent(matchId: matchId, messageLength: text.count)
         
+        // Update the lastActivity field with the senderId
+        try await db.collection("matches")
+            .document(matchId)
+            .updateData([
+                "lastActivity": FieldValue.serverTimestamp(),
+                "lastActivitySenderId": currentUserId // Add this line
+            ])
+        
         try await db.collection("matches")
             .document(matchId)
             .collection("messages")
