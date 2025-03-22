@@ -85,6 +85,7 @@ struct NavigationBarView: View {
                     
                     let currentUserId = Auth.auth().currentUser?.uid ?? ""
                     
+                    // Fixed optional handling
                     let lastViewedDate: Date
                     if let viewedTimestamp = viewed[currentUserId] ?? nil {
                         lastViewedDate = viewedTimestamp.dateValue()
@@ -92,11 +93,34 @@ struct NavigationBarView: View {
                         lastViewedDate = Date(timeIntervalSince1970: 0)
                     }
                     
-                    // If never viewed or has new activity
-                    if lastViewedDate == Date(timeIntervalSince1970: 0) ||
-                       lastActivity.dateValue() > lastViewedDate {
-                        hasMatchActivity = true
-                        return
+                    // If never viewed, it's a new match
+                    let isNewMatch = lastViewedDate == Date(timeIntervalSince1970: 0)
+                    
+                    // Check if there's activity after last view
+                    if !isNewMatch && lastActivity.dateValue() > lastViewedDate {
+                        // Fetch the most recent message from the messages subcollection
+                        let messagesQuery = try await Firestore.firestore()
+                            .collection("matches")
+                            .document(matchId)
+                            .collection("messages")
+                            .order(by: "timestamp", descending: true)
+                            .limit(to: 1)
+                            .getDocuments()
+                        
+                        if let mostRecentMessage = messagesQuery.documents.first,
+                           let senderId = mostRecentMessage.data()["senderId"] as? String {
+                            // Only set hasMatchActivity to true if the most recent message was NOT sent by the current user
+                            hasMatchActivity = senderId != currentUserId
+                            if hasMatchActivity {
+                                return
+                            }
+                        } else {
+                            // If there are no messages, assume no new activity
+                            hasMatchActivity = false
+                        }
+                    } else {
+                        // No new activity
+                        hasMatchActivity = false
                     }
                 }
             } catch {
