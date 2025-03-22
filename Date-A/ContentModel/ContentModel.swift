@@ -766,7 +766,8 @@ class ContentModel: NSObject, ObservableObject {
         // Create match document in matches collection
         let matchData: [String: Any] = [
             "users": [currentUserId, matchedUserId],
-            "createdAt": FieldValue.serverTimestamp()
+            "createdAt": FieldValue.serverTimestamp(),
+            "lastActivity": FieldValue.serverTimestamp() // Add lastActivity field
         ]
         let matchRef = db.collection("matches").document(matchId)
         batch.setData(matchData, forDocument: matchRef)
@@ -789,97 +790,78 @@ class ContentModel: NSObject, ObservableObject {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
         }
         
-        // Fetch all matches where the current user is part of the match
-        let matchesQuery = db.collection("matches")
-            .whereField("users", arrayContains: currentUserId)
+        let matchDocs = try await db.collection("users")
+            .document(currentUserId)
+            .collection("matches")
+            .getDocuments()
         
-        let matchDocs = try await matchesQuery.getDocuments()
+        var fetchedUsers: [(user: User, lastActivity: Date)] = []
         
-        print("Fetched matches count: \(matchDocs.documents.count)") // Debug print
-        
-        var matchesWithLastActivity: [(User, Date)] = []
-        var matchesWithoutLastActivity: [User] = []
-        
-        // Process each match document
         for matchDoc in matchDocs.documents {
-            let matchData = matchDoc.data()
+            let match = try await db.collection("matches")
+                .document(matchDoc.documentID)
+                .getDocument()
             
-            // Fetch the lastActivity timestamp (if it exists)
-            let lastActivity = (matchData["lastActivity"] as? Timestamp)?.dateValue()
-            
-            // Fetch all users in the match (excluding the current user)
-            if let userIds = matchData["users"] as? [String] {
-                for userId in userIds where userId != currentUserId {
-                    do {
-                        // Fetch the matched user's data
-                        let userDoc = try await db.collection("users")
-                            .document(userId)
-                            .getDocument()
-                        
-                        // Check if the user document exists
-                        if userDoc.exists, let matchedUser = try? userDoc.data(as: User.self) {
-                            if let lastActivity = lastActivity {
-                                // Add to matchesWithLastActivity if lastActivity exists
-                                matchesWithLastActivity.append((matchedUser, lastActivity))
-                            } else {
-                                // Add to matchesWithoutLastActivity if lastActivity is nil
-                                matchesWithoutLastActivity.append(matchedUser)
-                            }
-                        } else {
-                            print("User document does not exist for ID: \(userId)")
-                        }
-                    } catch {
-                        print("Error fetching user document for ID: \(userId): \(error)")
-                    }
+            if let matchData = match.data(),
+               let userIds = matchData["users"] as? [String],
+               let lastActivity = matchData["lastActivity"] as? Timestamp {
+                let matchedUserId = userIds.first { $0 != currentUserId } ?? ""
+                
+                let userDoc = try await db.collection("users")
+                    .document(matchedUserId)
+                    .getDocument()
+                
+                if let matchedUser = try? userDoc.data(as: User.self) {
+                    fetchedUsers.append((user: matchedUser, lastActivity: lastActivity.dateValue()))
                 }
             }
         }
         
-        // Sort matchesWithLastActivity by lastActivity (most recent first)
-        let sortedMatchesWithLastActivity = matchesWithLastActivity
-            .sorted { $0.1 > $1.1 } // Sort by lastActivity
-            .map { $0.0 } // Extract the User objects
+        fetchedUsers.sort { $0.lastActivity > $1.lastActivity }
+        let sortedUsers = fetchedUsers.map { $0.user }
         
-        // Combine the sorted matches and unsorted matches
-        let allMatches = sortedMatchesWithLastActivity + matchesWithoutLastActivity
-        
-        print("Total matches count: \(allMatches.count)") // Debug print
-        
-        // Update the matches array on the main thread
         await MainActor.run {
-            self.matches = allMatches
+            self.matches = sortedUsers
         }
-        
-        // Pre-fetch match images
         await preFetchMatchImages()
     }
-    
+        
     func sendMessage(to matchId: String, text: String) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
         
+        // Create the message object (timestamp is set locally in the Message initializer)
         let message = Message(senderId: currentUserId, text: text)
+        
+        // Log message sent (assuming this is a custom logging function)
         logMessageSent(matchId: matchId, messageLength: text.count)
         
-        // Update the lastActivity field with the senderId
-        try await db.collection("matches")
-            .document(matchId)
-            .updateData([
-                "lastActivity": FieldValue.serverTimestamp(),
-                "lastActivitySenderId": currentUserId // Add this line
-            ])
+        // Create a batch to update both the message and the match's lastActivity
+        let batch = db.batch()
         
-        try await db.collection("matches")
+        // Add the message to the messages subcollection
+        let messageRef = db.collection("matches")
             .document(matchId)
             .collection("messages")
             .document(message.id)
-            .setData([
-                "senderId": message.senderId,
-                "text": message.text,
-                "timestamp": message.timestamp
-            ])
+        batch.setData([
+            "senderId": message.senderId,
+            "text": message.text,
+            "timestamp": message.timestamp // Use the local timestamp from the Message object
+        ], forDocument: messageRef)
+        
+        // Update the lastActivity field in the match document to the server timestamp
+        let matchRef = db.collection("matches").document(matchId)
+        batch.updateData([
+            "lastActivity": FieldValue.serverTimestamp() // Update lastActivity to the server timestamp
+        ], forDocument: matchRef)
+        
+        // Commit the batch
+        try await batch.commit()
+        
+        try await fetchMatches()
     }
     
     func fetchMessages(for matchId: String) async throws {

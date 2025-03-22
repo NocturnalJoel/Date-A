@@ -9,6 +9,7 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 
+
 struct MatchesView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var model: ContentModel
@@ -213,8 +214,7 @@ struct MatchCard: View {
                 
                 if let data = matchDoc.data(),
                    let viewed = data["viewed"] as? [String: Timestamp?],
-                   let lastActivity = data["lastActivity"] as? Timestamp,
-                   let lastActivitySenderId = data["lastActivitySenderId"] as? String { // Add this line
+                   let lastActivity = data["lastActivity"] as? Timestamp {
                     
                     let currentUserId = Auth.auth().currentUser?.uid ?? ""
                     
@@ -229,10 +229,8 @@ struct MatchCard: View {
                     // If never viewed, it's a new match
                     isNewMatch = lastViewedDate == Date(timeIntervalSince1970: 0)
                     
-                    // If there's activity after last view AND the activity is from the other user, show red circle
-                    hasNewActivity = !isNewMatch &&
-                                     lastActivity.dateValue() > lastViewedDate &&
-                                     lastActivitySenderId != currentUserId // Add this condition
+                    // If there's activity after last view, show red circle
+                    hasNewActivity = !isNewMatch && lastActivity.dateValue() > lastViewedDate
                 }
             } catch {
                 print("Error fetching match status: \(error)")
