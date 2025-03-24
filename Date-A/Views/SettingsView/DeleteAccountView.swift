@@ -1,20 +1,13 @@
 import SwiftUI
 import FirebaseAnalytics
 import FirebaseAuth
+import FirebaseFirestore
 
 struct DeleteAccountView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var model: ContentModel
     
-    let reasons = [
-        "I found someone on the app",
-        "Not enough matches",
-        "Too many bugs",
-        "I don't like the app's concept",
-        "Other"
-    ]
-    
-    @State private var selectedReason: String = ""
+    @State private var deletionReason: String = ""
     @State private var isDeleting = false
     @State private var showError = false
     @State private var errorMessage = ""
@@ -31,32 +24,17 @@ struct DeleteAccountView: View {
                     .font(.system(size: 16))
                     .foregroundColor(.gray)
                 
-                // Reason Selection
-                VStack(spacing: 12) {
-                    ForEach(reasons, id: \.self) { reason in
-                        Button {
-                            selectedReason = reason
-                        } label: {
-                            HStack {
-                                Text(reason)
-                                    .foregroundColor(.black)
-                                Spacer()
-                                if selectedReason == reason {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.blue)
-                                } else {
-                                    Image(systemName: "circle")
-                                        .foregroundColor(.gray)
-                                }
-                            }
-                            .padding()
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(10)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical)
+                // Free-form reason input
+                TextEditor(text: $deletionReason)
+                    .frame(height: 120)
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
+                    .padding(.vertical)
                 
                 Spacer()
                 
@@ -79,11 +57,11 @@ struct DeleteAccountView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .background(selectedReason.isEmpty ? Color.gray : Color.red)
+                            .background(deletionReason.isEmpty ? Color.gray : Color.red)
                             .cornerRadius(16)
                     }
                 }
-                .disabled(selectedReason.isEmpty || isDeleting)
+                .disabled(deletionReason.isEmpty || isDeleting)
             }
             .padding()
             .navigationBarItems(
@@ -103,8 +81,11 @@ struct DeleteAccountView: View {
         isDeleting = true
         
         do {
+            // Log the deletion reason to Firebase Analytics
+            logDeletionReasonToFirebase(reason: deletionReason)
+            
             // Delete account from database
-            try await model.deleteAccount(reason: selectedReason)
+            try await model.deleteAccount(reason: deletionReason)
             
             // Sign out the user
             try Auth.auth().signOut()
@@ -122,6 +103,22 @@ struct DeleteAccountView: View {
                 errorMessage = "Failed to delete account: \(error.localizedDescription)"
                 showError = true
                 isDeleting = false
+            }
+        }
+    }
+    
+    private func logDeletionReasonToFirebase(reason: String) {
+        let db = Firestore.firestore()
+        let data: [String: Any] = [
+            "reason": reason,
+            "timestamp": Timestamp(date: Date())
+        ]
+        
+        db.collection("Analytics").document("AccountDeletionReasons").collection("Reasons").addDocument(data: data) { error in
+            if let error = error {
+                print("Error logging deletion reason: \(error.localizedDescription)")
+            } else {
+                print("Deletion reason logged successfully")
             }
         }
     }

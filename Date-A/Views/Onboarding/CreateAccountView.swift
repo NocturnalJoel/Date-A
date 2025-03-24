@@ -1,16 +1,10 @@
-//
-//  CreateAccountView.swift
-//  Date-A
-//
-//  Created by Joël Lacoste-Therrien on 2024-12-01.
-//
-
 import SwiftUI
 import PhotosUI
 import Firebase
 import FirebaseStorage
 import FirebaseAuth
 import FirebaseAnalytics
+import FirebaseFirestore
 
 struct BlackMenuPickerStyle: ViewModifier {
     func body(content: Content) -> some View {
@@ -28,7 +22,6 @@ struct CreateAccountView: View {
     @State private var showPhotoPermissionAlert = false
     @State private var progressValue: CGFloat = 0
     @State private var showProgress = false
-    @State private var selectedReferralSource: ReferralSource = .friend
     @State private var verifyPassword = ""
     
     // Create Account states
@@ -40,14 +33,7 @@ struct CreateAccountView: View {
     @State private var createPassword = ""
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
-    
-    enum ReferralSource: String, CaseIterable {
-        case friend = "From a friend"
-        case news = "From the news media"
-        case social = "From social media"
-        case ad = "From an ad"
-        case event = "From an event"
-    }
+    @State private var referralSourceText = "" // Free-form text for referral source
     
     // MARK: - Subviews
     private var headerView: some View {
@@ -196,40 +182,34 @@ struct CreateAccountView: View {
                                 .padding()
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(12)
-                            
-                            
                         }
                         
                         VStack(alignment: .leading, spacing: 8) {
-                                    Text("Verify Password")
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(.gray)
-                                    SecureField("", text: $verifyPassword)
-                                        .font(.system(size: 17))
-                                        .textContentType(.none)
-                                        .padding()
-                                        .background(Color.gray.opacity(0.1))
-                                        .cornerRadius(12)
-                                }
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                                Text("How did you hear about us?")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.gray)
-                                Picker("Referral Source", selection: $selectedReferralSource) {
-                                    ForEach(ReferralSource.allCases, id: \.self) { source in
-                                        Text(source.rawValue)
-                                            .tag(source)
-                                    }
-                                }
-                                .pickerStyle(.menu)
+                            Text("Verify Password")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.gray)
+                            SecureField("", text: $verifyPassword)
                                 .font(.system(size: 17))
-                                .modifier(BlackMenuPickerStyle())
-                                .frame(maxWidth: .infinity)
+                                .textContentType(.none)
                                 .padding()
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(12)
-                            }
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("How did you hear about us?")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.gray)
+                            TextEditor(text: $referralSourceText)
+                                .frame(height: 100)
+                                .padding()
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                )
+                        }
                     }
                     
                     // Profile Photos Section
@@ -294,8 +274,6 @@ struct CreateAccountView: View {
                         }
                     }
                 }
-                
-                
                 
                 createAccountButton
                 
@@ -366,9 +344,21 @@ struct CreateAccountView: View {
             progressValue = 1.0
         }
         
-        Analytics.logEvent("account_creation", parameters: [
-            "referral_source": selectedReferralSource.rawValue
-        ])
+        // Log referral source to Firestore
+
+        let db = Firestore.firestore()
+        let data: [String: Any] = [
+            "referral_source": referralSourceText,
+            "timestamp": FieldValue.serverTimestamp()
+        ]
+        
+        db.collection("Analytics").document("ReferralSource").collection("ReferralSource").addDocument(data: data) { error in
+            if let error = error {
+                print("Error logging Referral Source: \(error.localizedDescription)")
+            } else {
+                print("Referral Source logged successfully")
+            }
+        }
         
         Task {
             do {
