@@ -24,15 +24,24 @@ class ContentModel: NSObject, ObservableObject {
     @Published var profileStack: [User] = []  // Will hold 5 preloaded profiles
     private let stackSize = 10
     @Published var fcmToken: String?
-    private let minStackSize = 1 // Threshold to trigger refresh
+    private let minStackSize = 5 // Threshold to trigger refresh
     private let targetStackSize = 10
     @Published private var moonLevelStacks: [Int: [User]] = [0: [], 1: [], 2: [], 3: [], 4: []]
-    @Published var hasReachedEnd = false
+
+    
+    @Published var lastDocumentSnapshots: [Int: DocumentSnapshot] = [:] // Tracks pagination per moon level
+    @Published var seenUserIDs = Set<String>()
+    
+    @Published var hasReachedEnd: [Int: Bool] = [:]
+    
+    @Published private var exhaustedLevels = Set<Int>()
+    
+    @Published private var allSeenProfileIDs = Set<String>()
     
     @Published var currentMoonLevel: Int = 2 {
         didSet {
             Task { @MainActor in
-                updateDisplayStack()
+                await initializeStacks()
             }
         }
     }
@@ -110,82 +119,95 @@ class ContentModel: NSObject, ObservableObject {
         }
     
     @MainActor
-    func initializeStacks() {
-        print("it works")
-        Task {
-            moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
-            profileStack.removeAll()
+    private func loadProfiles(level: Int, dislikedIds: Set<String>, likedIds: Set<String>) async {
+            // Ensure we're not loading if we've reached the end
+            guard (hasReachedEnd[level] ?? false) == false else { return }
             
-            guard let currentUserId = Auth.auth().currentUser?.uid,
-                  let currentUser = self.currentUser else {
-                return
+            // Build query with all filters
+            var query = db.collection("users")
+                .whereField("gender", isEqualTo: currentUser?.genderPreference.rawValue ?? "")
+                .whereField("genderPreference", isEqualTo: currentUser?.gender.rawValue ?? "")
+                .whereField("age", isGreaterThanOrEqualTo: currentUser?.minAgePreference ?? 18)
+                .whereField("age", isLessThanOrEqualTo: currentUser?.maxAgePreference ?? 99)
+                .whereField("likeRatio", isGreaterThan: Double(level * 20))
+                .whereField("likeRatio", isLessThanOrEqualTo: Double((level + 1) * 20))
+                .limit(to: 10)
+            
+            // Add pagination if needed
+            if let lastDoc = lastDocumentSnapshots[level] {
+                query = query.start(afterDocument: lastDoc)
             }
             
             do {
-                let (dislikedIds, likedIds) = try await getFilteredIds(for: currentUserId)
+                let snapshot = try await query.getDocuments()
+                var newProfiles = [User]()
                 
-                for level in 0...4 {
-                    let query = db.collection("users")
-                        .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
-                        .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
-                        .whereField("likeRatio", isGreaterThan: Double(level * 20))
-                        .whereField("likeRatio", isLessThanOrEqualTo: Double((level + 1) * 20))
-                        .limit(to: 10)
-                    
-                    let querySnapshot = try await query.getDocuments()
-                    
-                    let levelProfiles = querySnapshot.documents.compactMap { doc -> User? in
-                        let docId = doc.documentID
-                        
-                        guard let user = try? doc.data(as: User.self) else {
-                            return nil
-                        }
-                        
-                        guard !dislikedIds.contains(user.id) else {
-                            return nil
-                        }
-                        
-                        guard !likedIds.contains(user.id) else {
-                            return nil
-                        }
-                        
-                        guard user.id != currentUserId else {
-                            return nil
-                        }
-                        
-                        guard user.age >= currentUser.minAgePreference else {
-                            return nil
-                        }
-                        
-                        guard user.age <= currentUser.maxAgePreference else {
-                            return nil
-                        }
-                        
-                        guard user.gender == currentUser.genderPreference else {
-                            return nil
-                        }
-                        
-                        return user
+                // Process documents on background thread
+                for doc in snapshot.documents {
+                    guard let user = try? doc.data(as: User.self),
+                          !allSeenProfileIDs.contains(user.id),
+                          !dislikedIds.contains(user.id),
+                          !likedIds.contains(user.id) else {
+                        continue
                     }
                     
-                    moonLevelStacks[level] = levelProfiles
-                    
-                    await withTaskGroup(of: Void.self) { group in
-                        for user in levelProfiles {
-                            group.addTask { [weak self] in
-                                await self?.preloadImagesForUser(user)
-                            }
-                        }
-                    }
+                    newProfiles.append(user)
+                    allSeenProfileIDs.insert(user.id)
                 }
                 
-                updateDisplayStack()
+                // Update UI on main thread
+                await MainActor.run {
+                    if moonLevelStacks[level] == nil {
+                        moonLevelStacks[level] = []
+                    }
+                    
+                    moonLevelStacks[level]?.append(contentsOf: newProfiles)
+                    lastDocumentSnapshots[level] = snapshot.documents.last
+                    hasReachedEnd[level] = newProfiles.isEmpty
+                    updateDisplayStack()
+                }
                 
             } catch {
+                print("Error loading profiles:", error)
+                await MainActor.run {
+                    errorMessage = "Failed to load profiles"
+                }
             }
         }
+        
+        // Public interface
+        func initializeStacks() async {
+            guard let currentUserID = currentUser?.id else { return }
+            
+            // Reset all tracking state
+            await MainActor.run {
+                allSeenProfileIDs.removeAll()
+                hasReachedEnd = [:]
+                lastDocumentSnapshots = [:]
+                moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
+                errorMessage = ""
+            }
+            
+            // Get filtered IDs
+            let (dislikedIds, likedIds) = (try? await getFilteredIds(for: currentUserID)) ?? (Set(), Set())
+            
+            // Load initial profiles
+            await loadProfiles(level: currentMoonLevel, dislikedIds: dislikedIds, likedIds: likedIds)
+        }
+        
+    func refillProfilesIfNeeded() async {
+        guard profileStack.count < minStackSize,
+              let currentUserID = currentUser?.id else { return }
+        
+        let (dislikedIds, likedIds) = (try? await getFilteredIds(for: currentUserID)) ?? (Set(), Set())
+        await loadProfiles(level: currentMoonLevel, dislikedIds: dislikedIds, likedIds: likedIds)
     }
-
+        
+        @MainActor
+        private func updateDisplayStack() {
+            profileStack = moonLevelStacks[currentMoonLevel] ?? []
+        }
+    
     @MainActor
         func resetState() {
             self.currentUser = nil
@@ -211,10 +233,7 @@ class ContentModel: NSObject, ObservableObject {
             .limit(to: 10)
     }
 
-    @MainActor
-    private func updateDisplayStack() {
-        profileStack = moonLevelStacks[currentMoonLevel] ?? []
-    }
+    
     
     // UI State checks
     @MainActor
@@ -232,134 +251,255 @@ class ContentModel: NSObject, ObservableObject {
         (moonLevelStacks[currentMoonLevel] ?? []).isEmpty
     }
 
+  
+
+    // ===== SUPPORTING FUNCTIONS =====
+
+    private func refillCurrentLevel() async {
+        let refillStart = Date()
+        print("\n🔄 REFILLING LEVEL \(currentMoonLevel)")
+        
+        // 1. Skip if level is exhausted (NEW)
+        guard !(hasReachedEnd[currentMoonLevel] ?? false) else {
+            print("⏹️ Level \(currentMoonLevel) exhausted - skipping refill")
+            return
+        }
+        
+        // 2. Build query (unchanged)
+        var query = db.collection("users")
+            .whereField("gender", isEqualTo: currentUser?.genderPreference.rawValue ?? "")
+            .whereField("genderPreference", isEqualTo: currentUser?.gender.rawValue ?? "")
+            .whereField("age", isGreaterThanOrEqualTo: currentUser?.minAgePreference ?? 18)
+            .whereField("age", isLessThanOrEqualTo: currentUser?.maxAgePreference ?? 99)
+            .whereField("likeRatio", isGreaterThan: Double(currentMoonLevel * 20))
+            .whereField("likeRatio", isLessThanOrEqualTo: Double((currentMoonLevel + 1) * 20))
+            .limit(to: 5)
+        
+        // 3. Thread-safe pagination (IMPROVED)
+        let lastSnapshot = await MainActor.run {
+            lastDocumentSnapshots[currentMoonLevel]
+        }
+        
+        if let lastSnapshot = lastSnapshot {
+            print("📖 Paginating after document \(lastSnapshot.documentID.prefix(6))...")
+            query = query.start(afterDocument: lastSnapshot)
+        }
+        
+        do {
+            // 4. Execute with server priority (NEW)
+            let snapshot = try await query.getDocuments(source: .server)
+            print("📥 Received \(snapshot.documents.count) raw documents")
+            
+            // 5. Early exit if empty (IMPROVED)
+            guard !snapshot.isEmpty else {
+                print("⏹️ NO MORE PROFILES AVAILABLE for level \(currentMoonLevel)")
+                await MainActor.run {
+                    hasReachedEnd[currentMoonLevel] = true
+                }
+                return
+            }
+            
+            // 6. Get filtered IDs (unchanged)
+            let (dislikedIds, likedIds) = try await getFilteredIds(for: Auth.auth().currentUser?.uid ?? "")
+            
+            // 7. Process documents with thread-safe tracking (IMPROVED)
+            let newProfiles: [User] = await MainActor.run {
+                snapshot.documents.compactMap { doc in
+                    guard let user = try? doc.data(as: User.self) else {
+                        print("📄 Failed to decode user \(doc.documentID.prefix(6))...")
+                        return nil
+                    }
+                    
+                    let rejectionReason: String? = {
+                        if seenUserIDs.contains(user.id) { return "already seen" }
+                        if dislikedIds.contains(user.id) { return "disliked" }
+                        if likedIds.contains(user.id) { return "already liked" }
+                        if user.id == Auth.auth().currentUser?.uid { return "current user" }
+                        return nil
+                    }()
+                    
+                    if let reason = rejectionReason {
+                        print("❌ Rejected \(user.id.prefix(6))...: \(reason)")
+                        return nil
+                    }
+                    
+                    seenUserIDs.insert(user.id)
+                    return user
+                }
+            }
+            
+            // 8. Atomic state update (IMPROVED)
+            await MainActor.run { [weak self] in
+                guard let self = self else { return }
+                
+                if self.moonLevelStacks[self.currentMoonLevel] == nil {
+                    self.moonLevelStacks[self.currentMoonLevel] = []
+                }
+                
+                self.moonLevelStacks[self.currentMoonLevel]?.append(contentsOf: newProfiles)
+                self.lastDocumentSnapshots[self.currentMoonLevel] = snapshot.documents.last
+                self.updateDisplayStack()
+                
+                print("✨ Added \(newProfiles.count) new profiles")
+                print("🆕 Stack now has \(self.profileStack.count) profiles")
+            }
+            
+            // 9. Preload images (unchanged)
+            await preloadImagesForUsers(newProfiles)
+            
+        } catch {
+            print("🔴 REFILL FAILED: \(error.localizedDescription)")
+            await MainActor.run {
+                errorMessage = "Refill failed: \(error.localizedDescription)"
+            }
+        }
+        
+        print("⏱️ Refill completed in \(String(format: "%.2f", Date().timeIntervalSince(refillStart)))s")
+    }
+
+    
+
     func likeUser(_ likedUser: User) async throws {
         let likedUserId = likedUser.id
         
+        // 1. Verify Authentication
         guard let currentUserId = Auth.auth().currentUser?.uid else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Authentication required"])
         }
         
+        // 2. Calculate New Like Ratio
         let newLikes = likedUser.timesLiked + 1
-            let newTotal = newLikes + likedUser.timesDisliked
-            let newRatio: Double
-            
-            if newTotal == 0 || newLikes == 0 || likedUser.timesDisliked == 0 {
-                newRatio = 50.0
-            } else {
-                newRatio = (Double(newLikes) / Double(newTotal)) * 100
-            }
+        let newTotal = newLikes + likedUser.timesDisliked
+        let newRatio: Double = {
+            if newTotal == 0 { return 50.0 }
+            return (Double(newLikes) / Double(newTotal)) * 100
+        }()
         
-        // Firebase operations
+        // 3. Firebase Batch Operation
         let batch = db.batch()
-        let likeSentRef = db.collection("users").document(currentUserId)
-            .collection("likes_sent").document(likedUserId)
-        let likeReceivedRef = db.collection("users").document(likedUserId)
-            .collection("likes_received").document(currentUserId)
-        let userRef = db.collection("users").document(likedUserId)
         
+        // Add to likes_sent
+        let likeSentRef = db.collection("users")
+            .document(currentUserId)
+            .collection("likes_sent")
+            .document(likedUserId)
         batch.setData([:], forDocument: likeSentRef)
+        
+        // Add to likes_received
+        let likeReceivedRef = db.collection("users")
+            .document(likedUserId)
+            .collection("likes_received")
+            .document(currentUserId)
         batch.setData([:], forDocument: likeReceivedRef)
+        
+        // Update target user's stats
+        let userRef = db.collection("users").document(likedUserId)
         batch.updateData([
-                "timesLiked": FieldValue.increment(Int64(1)),
-                "likeRatio": newRatio
-            ], forDocument: userRef)
+            "timesLiked": FieldValue.increment(Int64(1)),
+            "likeRatio": newRatio
+        ], forDocument: userRef)
         
+        // 4. Execute Batch
         try await batch.commit()
+        logUserLike(targetUserAge: likedUser.age, matchOccurred: false)
         
-        
-        // Check for match
-        let otherUserLikes = try await db.collection("users")
+        // 5. Check for Match
+        let matchDoc = try await db.collection("users")
             .document(likedUserId)
             .collection("likes_sent")
             .document(currentUserId)
             .getDocument()
         
-        logUserLike(targetUserAge: likedUser.age, matchOccurred: otherUserLikes.exists)
-        
-        if otherUserLikes.exists {
+        if matchDoc.exists {
+            logUserLike(targetUserAge: likedUser.age, matchOccurred: true)
             try await createMatch(currentUserId: currentUserId, matchedUserId: likedUserId)
         }
         
-        // Update local stacks
+        // 6. Update Local State
         await MainActor.run { [weak self] in
             guard let self = self else { return }
             
-            // Remove user from current moon level stack
-            if var currentLevelStack = moonLevelStacks[currentMoonLevel] {
-                currentLevelStack.removeAll { $0.id == likedUser.id }
-                moonLevelStacks[currentMoonLevel] = currentLevelStack
-                updateDisplayStack()
-                
-                // Check if stack needs refilling
-                if profileStack.count < minStackSize {
-                    print("📥 Stack size (\(profileStack.count)) below minimum (\(minStackSize)). Triggering refill...")
-                    Task {
-                        await initializeStacks()
-                    }
+            // Remove from all stacks
+            self.removeUserFromAllStacks(userId: likedUserId)
+            
+            // Refill if needed
+            if self.profileStack.count < self.minStackSize {
+                Task {
+                    await self.refillProfilesIfNeeded()
                 }
             }
         }
     }
-
+    
     func dislikeUser(_ dislikedUser: User) async throws {
         let dislikedUserId = dislikedUser.id
         
+        // 1. Verify Authentication
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
         }
         
+        // 2. Calculate New Ratio
         let newDislikes = dislikedUser.timesDisliked + 1
-            let newTotal = dislikedUser.timesLiked + newDislikes
-            let newRatio: Double
-            
-            if newTotal == 0 || dislikedUser.timesLiked == 0 || newDislikes == 0 {
-                newRatio = 50.0
-            } else {
-                newRatio = (Double(dislikedUser.timesLiked) / Double(newTotal)) * 100
-            }
+        let newTotal = dislikedUser.timesLiked + newDislikes
+        let newRatio: Double = {
+            if newTotal == 0 { return 50.0 }
+            return (Double(dislikedUser.timesLiked) / Double(newTotal)) * 100
+        }()
         
-        // Firebase operations
+        // 3. Firebase Operations
         let batch = db.batch()
-        let dislikeRef = db.collection("users").document(currentUserId)
-            .collection("dislikes").document(dislikedUserId)
-        let userRef = db.collection("users").document(dislikedUserId)
         
+        // Add to dislikes
+        let dislikeRef = db.collection("users")
+            .document(currentUserId)
+            .collection("dislikes")
+            .document(dislikedUserId)
         batch.setData([:], forDocument: dislikeRef)
-        batch.updateData([
-                "timesDisliked": FieldValue.increment(Int64(1)),
-                "likeRatio": newRatio
-            ], forDocument: userRef)
         
-        // Check and handle previous likes
-        let previousLikeRef = db.collection("users").document(currentUserId)
-            .collection("likes_received").document(dislikedUserId)
+        // Update target user's stats
+        let userRef = db.collection("users").document(dislikedUserId)
+        batch.updateData([
+            "timesDisliked": FieldValue.increment(Int64(1)),
+            "likeRatio": newRatio
+        ], forDocument: userRef)
+        
+        // Remove any existing like_received
+        let previousLikeRef = db.collection("users")
+            .document(currentUserId)
+            .collection("likes_received")
+            .document(dislikedUserId)
         let previousLikeDoc = try await previousLikeRef.getDocument()
         if previousLikeDoc.exists {
             batch.deleteDocument(previousLikeRef)
         }
         
+        // 4. Execute Batch
         try await batch.commit()
         logUserDislike(targetUserAge: dislikedUser.age)
         
-        // Update local stacks
+        // 5. Update Local State
         await MainActor.run { [weak self] in
             guard let self = self else { return }
             
-            // Remove user from current moon level stack
-            if var currentLevelStack = moonLevelStacks[currentMoonLevel] {
-                currentLevelStack.removeAll { $0.id == dislikedUser.id }
-                moonLevelStacks[currentMoonLevel] = currentLevelStack
-                updateDisplayStack()
-                
-                // Check if stack needs refilling
-                if profileStack.count < minStackSize {
-                    print("📥 Stack size (\(profileStack.count)) below minimum (\(minStackSize)). Triggering refill...")
-                    Task {
-                        await initializeStacks()
-                    }
+            // Remove from all stacks
+            self.removeUserFromAllStacks(userId: dislikedUserId)
+            
+            // Refill if needed
+            if self.profileStack.count < self.minStackSize {
+                Task {
+                    await self.refillProfilesIfNeeded()
                 }
             }
         }
+    }
+    
+    @MainActor
+    private func removeUserFromAllStacks(userId: String) {
+        for level in 0...4 {
+            moonLevelStacks[level]?.removeAll { $0.id == userId }
+        }
+        updateDisplayStack()
     }
 
     func preloadCurrentUserImages() async {

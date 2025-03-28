@@ -71,7 +71,7 @@ struct SettingsView: View {
                             )
                             print("Settings updated successfully") // Debug
                             
-                            model.initializeStacks()
+                            await model.initializeStacks()
                             await refreshUserData()
                             selectedItems = []
                             

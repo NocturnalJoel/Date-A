@@ -1,6 +1,5 @@
-
-
 import SwiftUI
+
 struct HomeView: View {
     @EnvironmentObject var model: ContentModel
     @State private var matchedUser: User?
@@ -11,34 +10,36 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Navigation Bar
                 NavigationBarView()
                     .environmentObject(model)
                 
+                // Moon Level Slider
                 MoonSliderView(selectedLevel: $model.currentMoonLevel)
                     .environmentObject(model)
                 
                 Spacer()
                 
+                // Main Content Area
                 ZStack {
-                    // Always show shimmer while loading
+                    // 1. Loading State (Spinner/Shimmer)
                     if isLoading {
                         ProfileCardPlaceholder()
                             .transition(.opacity)
                     }
                     
-                    // Show profiles when loaded and available
-                    if !isLoading && model.checkProfileVisibility() {
-                        ForEach(Array(model.profileStack.prefix(2).enumerated().reversed()), id: \.element.id) { index, user in
+                    // 2. Profiles (if loaded and available)
+                    else if !model.profileStack.isEmpty {
+                        ForEach(Array(model.profileStack.enumerated()), id: \.element.id) { index, user in
                             ProfileCardView(user: user, stampType: $stampType)
+                                .zIndex(Double(model.profileStack.count - index))
                                 .opacity(index == 0 ? 1 : 0.05)
-                                .background(Color(.systemBackground))
                                 .id("\(user.id)_\(index)")
-                                .transition(.opacity)
                         }
                     }
                     
-                    // Show empty state when loaded but no profiles
-                    if !isLoading && model.hasReachedEndForCurrentLevel() {
+                    // 3. Empty State (Only shown when no profiles exist)
+                    else if model.hasReachedEndForCurrentLevel() {
                         VStack(spacing: 16) {
                             Text("🌌")
                                 .font(.system(size: 150, weight: .bold))
@@ -46,9 +47,6 @@ struct HomeView: View {
                                 .font(.title3)
                                 .fontWeight(.medium)
                                 .foregroundColor(.gray)
-                            Text("Change your filters to see more profiles")
-                                .font(.subheadline)
-                                .foregroundColor(.gray.opacity(0.8))
                         }
                         .transition(.opacity)
                     }
@@ -58,47 +56,41 @@ struct HomeView: View {
                 
                 Spacer()
                 
-                ButtonsView(showMatchAnimation: $showMatchAnimation,
-                           matchedUser: $matchedUser,
-                           stampType: $stampType)
-                    .environmentObject(model)
-                    .opacity(isLoading ? 0 : 1) // Hide buttons while loading
-                    .animation(.easeInOut(duration: 0.3), value: isLoading)
+                // Action Buttons (Hidden during loading)
+                ButtonsView(
+                    showMatchAnimation: $showMatchAnimation,
+                    matchedUser: $matchedUser,
+                    stampType: $stampType
+                )
+                .environmentObject(model)
+                .opacity(isLoading ? 0 : 1)
+                .animation(.easeInOut(duration: 0.3), value: isLoading)
             }
             .navigationBarHidden(true)
             .overlay(
+                // Match Animation Overlay
                 ZStack {
                     if showMatchAnimation, let matchedUser = matchedUser {
-                        MatchAnimationView(isPresented: $showMatchAnimation, matchedUser: matchedUser)
+                        MatchAnimationView(
+                            isPresented: $showMatchAnimation,
+                            matchedUser: matchedUser
+                        )
                     }
                 }
             )
             .onAppear {
-                isLoading = true
-                
                 Task {
-                    do {
-                        // Start all async operations concurrently
-                        async let refreshUser = try model.refreshCurrentUser()
-                        async let initializeStacks = model.initializeStacks()
-                        async let fetchMatches = try model.fetchMatches()
-                        async let loadUnmatched = model.loadUnmatchedProfiles()
-                        
-                        // Wait for all operations to complete
-                        _ = try await (refreshUser, initializeStacks, fetchMatches, loadUnmatched)
-                        
-                        // Update UI state
-                        await MainActor.run {
-                            isLoading = false
-                        }
-                    } catch {
-                        // Handle any errors that occur during the async operations
-                        await MainActor.run {
-                            isLoading = false
-                            model.errorMessage = "Failed to load data. Please try again."
-                            print("Error loading data: \(error.localizedDescription)")
-                        }
-                    }
+                    isLoading = true
+                    await model.initializeStacks()
+                    isLoading = false
+                }
+            }
+            // Smooth moon level transitions
+            .onChange(of: model.currentMoonLevel) { _ in
+                Task {
+                    isLoading = true
+                    await model.initializeStacks()
+                    isLoading = false
                 }
             }
         }

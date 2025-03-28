@@ -1,11 +1,21 @@
 import SwiftUI
 
 struct MoonSliderView: View {
-    @Binding var selectedLevel: Int
+    
     @EnvironmentObject var model: ContentModel
     
     private let moonPhases = ["🌑", "🌘", "🌗", "🌖", "🌕"]
     private let ranges = ["0-20", "20-40", "40-60", "60-80", "80-100"]
+    @Binding var selectedLevel: Int {
+        didSet {
+            // Only trigger if the value changed
+            if oldValue != selectedLevel {
+                Task {
+                    await model.initializeStacks()
+                }
+            }
+        }
+    }
     
     var body: some View {
         VStack(spacing: 8) {
