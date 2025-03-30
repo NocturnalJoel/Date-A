@@ -11,7 +11,7 @@ struct MoonSliderView: View {
             // Only trigger if the value changed
             if oldValue != selectedLevel {
                 Task {
-                    await model.initializeStacks()
+                  
                 }
             }
         }

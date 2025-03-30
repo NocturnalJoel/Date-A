@@ -81,7 +81,8 @@ struct HomeView: View {
             .onAppear {
                 Task {
                     isLoading = true
-                    await model.initializeStacks()
+                    
+                    try await model.fetchMatches()
                     isLoading = false
                 }
             }
@@ -89,7 +90,7 @@ struct HomeView: View {
             .onChange(of: model.currentMoonLevel) { _ in
                 Task {
                     isLoading = true
-                    await model.initializeStacks()
+                    
                     isLoading = false
                 }
             }

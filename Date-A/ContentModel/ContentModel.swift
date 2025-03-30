@@ -27,7 +27,7 @@ class ContentModel: NSObject, ObservableObject {
     private let minStackSize = 5 // Threshold to trigger refresh
     private let targetStackSize = 10
     @Published private var moonLevelStacks: [Int: [User]] = [0: [], 1: [], 2: [], 3: [], 4: []]
-
+    
     
     @Published var lastDocumentSnapshots: [Int: DocumentSnapshot] = [:] // Tracks pagination per moon level
     @Published var seenUserIDs = Set<String>()
@@ -38,13 +38,7 @@ class ContentModel: NSObject, ObservableObject {
     
     @Published private var allSeenProfileIDs = Set<String>()
     
-    @Published var currentMoonLevel: Int = 2 {
-        didSet {
-            Task { @MainActor in
-                await initializeStacks()
-            }
-        }
-    }
+    
     
     private var imagePreloadQueue: OperationQueue = {
         let queue = OperationQueue()
@@ -58,6 +52,7 @@ class ContentModel: NSObject, ObservableObject {
         return cache
     }()
     
+    //========== INIT ==================
     
     override init() {
         
@@ -67,9 +62,9 @@ class ContentModel: NSObject, ObservableObject {
         
         // Listen for FCM token updates
         NotificationCenter.default.addObserver(self,
-                                           selector: #selector(updateFCMToken),
-                                           name: Notification.Name("FCMToken"),
-                                           object: nil)
+                                               selector: #selector(updateFCMToken),
+                                               name: Notification.Name("FCMToken"),
+                                               object: nil)
         
         // Check for existing Firebase session
         if let firebaseUser = Auth.auth().currentUser {
@@ -95,270 +90,24 @@ class ContentModel: NSObject, ObservableObject {
             }
         }
         
-       
+        
         
     }
     
-    private func fetchUserData(uid: String) {
-            let docRef = db.collection("users").document(uid)
-            docRef.getDocument { [weak self] (document, error) in
-                if let document = document, document.exists {
-                    do {
-                        let user = try document.data(as: User.self)
-                        DispatchQueue.main.async {
-                            self?.currentUser = user
-                            self?.errorMessage = ""
-                        }
-                    } catch {
-                        print("Error decoding user: \(error)")
-                        self?.errorMessage = "Error fetching user data"
-                    
-                    }
-                }
-            }
-        }
     
-    @MainActor
-    private func loadProfiles(level: Int, dislikedIds: Set<String>, likedIds: Set<String>) async {
-            // Ensure we're not loading if we've reached the end
-            guard (hasReachedEnd[level] ?? false) == false else { return }
-            
-            // Build query with all filters
-            var query = db.collection("users")
-                .whereField("gender", isEqualTo: currentUser?.genderPreference.rawValue ?? "")
-                .whereField("genderPreference", isEqualTo: currentUser?.gender.rawValue ?? "")
-                .whereField("age", isGreaterThanOrEqualTo: currentUser?.minAgePreference ?? 18)
-                .whereField("age", isLessThanOrEqualTo: currentUser?.maxAgePreference ?? 99)
-                .whereField("likeRatio", isGreaterThan: Double(level * 20))
-                .whereField("likeRatio", isLessThanOrEqualTo: Double((level + 1) * 20))
-                .limit(to: 10)
-            
-            // Add pagination if needed
-            if let lastDoc = lastDocumentSnapshots[level] {
-                query = query.start(afterDocument: lastDoc)
-            }
-            
-            do {
-                let snapshot = try await query.getDocuments()
-                var newProfiles = [User]()
-                
-                // Process documents on background thread
-                for doc in snapshot.documents {
-                    guard let user = try? doc.data(as: User.self),
-                          !allSeenProfileIDs.contains(user.id),
-                          !dislikedIds.contains(user.id),
-                          !likedIds.contains(user.id) else {
-                        continue
-                    }
-                    
-                    newProfiles.append(user)
-                    allSeenProfileIDs.insert(user.id)
-                }
-                
-                // Update UI on main thread
-                await MainActor.run {
-                    if moonLevelStacks[level] == nil {
-                        moonLevelStacks[level] = []
-                    }
-                    
-                    moonLevelStacks[level]?.append(contentsOf: newProfiles)
-                    lastDocumentSnapshots[level] = snapshot.documents.last
-                    hasReachedEnd[level] = newProfiles.isEmpty
-                    updateDisplayStack()
-                }
-                
-            } catch {
-                print("Error loading profiles:", error)
-                await MainActor.run {
-                    errorMessage = "Failed to load profiles"
-                }
-            }
-        }
-        
-        // Public interface
-        func initializeStacks() async {
-            guard let currentUserID = currentUser?.id else { return }
-            
-            // Reset all tracking state
-            await MainActor.run {
-                allSeenProfileIDs.removeAll()
-                hasReachedEnd = [:]
-                lastDocumentSnapshots = [:]
-                moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
-                errorMessage = ""
-            }
-            
-            // Get filtered IDs
-            let (dislikedIds, likedIds) = (try? await getFilteredIds(for: currentUserID)) ?? (Set(), Set())
-            
-            // Load initial profiles
-            await loadProfiles(level: currentMoonLevel, dislikedIds: dislikedIds, likedIds: likedIds)
-        }
-        
-    func refillProfilesIfNeeded() async {
-        guard profileStack.count < minStackSize,
-              let currentUserID = currentUser?.id else { return }
-        
-        let (dislikedIds, likedIds) = (try? await getFilteredIds(for: currentUserID)) ?? (Set(), Set())
-        await loadProfiles(level: currentMoonLevel, dislikedIds: dislikedIds, likedIds: likedIds)
-    }
-        
-        @MainActor
-        private func updateDisplayStack() {
-            profileStack = moonLevelStacks[currentMoonLevel] ?? []
-        }
-    
-    @MainActor
-        func resetState() {
-            self.currentUser = nil
-            self.currentUserImages = []
-            self.isLoggedIn = false
-        }
-    
-    private func getFilteredIds(for userId: String) async throws -> (Set<String>, Set<String>) {
-        async let dislikedDocs = db.collection("users").document(userId).collection("dislikes").getDocuments()
-        async let likedDocs = db.collection("users").document(userId).collection("likes_sent").getDocuments()
-        
-        let (disliked, liked) = try await (dislikedDocs, likedDocs)
-        return (Set(disliked.documents.map { $0.documentID }),
-                Set(liked.documents.map { $0.documentID }))
+    // ===== DEBUGGING UTILITIES =====
+    private func debugLog(_ message: String) {
+        let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        print("[ProfileDebug][\(timestamp)] \(message)")
     }
 
-    private func buildBaseQuery(for currentUser: User) -> Query {
-        return db.collection("users")
-            .whereField("gender", isEqualTo: currentUser.genderPreference.rawValue)
-            .whereField("genderPreference", isEqualTo: currentUser.gender.rawValue)
-            .whereField("likeRatio", isGreaterThanOrEqualTo: Double(currentMoonLevel * 20))
-            .whereField("likeRatio", isLessThanOrEqualTo: Double((currentMoonLevel * 20) + 20))
-            .limit(to: 10)
+    private func logProfile(_ profile: User) {
+        debugLog("Profile ID: \(profile.id), Name: \(profile.firstName), Age: \(profile.age), LikeRatio: \(profile.likeRatio)")
     }
-
+    
+    // ===== INTERACTION FUNCTIONS =====
     
     
-    // UI State checks
-    @MainActor
-    func checkProfileVisibility() -> Bool {
-        !profileStack.isEmpty
-    }
-
-    @MainActor
-    func isLoadingCurrentLevel() -> Bool {
-        profileStack.isEmpty && !(moonLevelStacks[currentMoonLevel]?.isEmpty ?? true)
-    }
-
-    @MainActor
-    func hasReachedEndForCurrentLevel() -> Bool {
-        (moonLevelStacks[currentMoonLevel] ?? []).isEmpty
-    }
-
-  
-
-    // ===== SUPPORTING FUNCTIONS =====
-
-    private func refillCurrentLevel() async {
-        let refillStart = Date()
-        print("\n🔄 REFILLING LEVEL \(currentMoonLevel)")
-        
-        // 1. Skip if level is exhausted (NEW)
-        guard !(hasReachedEnd[currentMoonLevel] ?? false) else {
-            print("⏹️ Level \(currentMoonLevel) exhausted - skipping refill")
-            return
-        }
-        
-        // 2. Build query (unchanged)
-        var query = db.collection("users")
-            .whereField("gender", isEqualTo: currentUser?.genderPreference.rawValue ?? "")
-            .whereField("genderPreference", isEqualTo: currentUser?.gender.rawValue ?? "")
-            .whereField("age", isGreaterThanOrEqualTo: currentUser?.minAgePreference ?? 18)
-            .whereField("age", isLessThanOrEqualTo: currentUser?.maxAgePreference ?? 99)
-            .whereField("likeRatio", isGreaterThan: Double(currentMoonLevel * 20))
-            .whereField("likeRatio", isLessThanOrEqualTo: Double((currentMoonLevel + 1) * 20))
-            .limit(to: 5)
-        
-        // 3. Thread-safe pagination (IMPROVED)
-        let lastSnapshot = await MainActor.run {
-            lastDocumentSnapshots[currentMoonLevel]
-        }
-        
-        if let lastSnapshot = lastSnapshot {
-            print("📖 Paginating after document \(lastSnapshot.documentID.prefix(6))...")
-            query = query.start(afterDocument: lastSnapshot)
-        }
-        
-        do {
-            // 4. Execute with server priority (NEW)
-            let snapshot = try await query.getDocuments(source: .server)
-            print("📥 Received \(snapshot.documents.count) raw documents")
-            
-            // 5. Early exit if empty (IMPROVED)
-            guard !snapshot.isEmpty else {
-                print("⏹️ NO MORE PROFILES AVAILABLE for level \(currentMoonLevel)")
-                await MainActor.run {
-                    hasReachedEnd[currentMoonLevel] = true
-                }
-                return
-            }
-            
-            // 6. Get filtered IDs (unchanged)
-            let (dislikedIds, likedIds) = try await getFilteredIds(for: Auth.auth().currentUser?.uid ?? "")
-            
-            // 7. Process documents with thread-safe tracking (IMPROVED)
-            let newProfiles: [User] = await MainActor.run {
-                snapshot.documents.compactMap { doc in
-                    guard let user = try? doc.data(as: User.self) else {
-                        print("📄 Failed to decode user \(doc.documentID.prefix(6))...")
-                        return nil
-                    }
-                    
-                    let rejectionReason: String? = {
-                        if seenUserIDs.contains(user.id) { return "already seen" }
-                        if dislikedIds.contains(user.id) { return "disliked" }
-                        if likedIds.contains(user.id) { return "already liked" }
-                        if user.id == Auth.auth().currentUser?.uid { return "current user" }
-                        return nil
-                    }()
-                    
-                    if let reason = rejectionReason {
-                        print("❌ Rejected \(user.id.prefix(6))...: \(reason)")
-                        return nil
-                    }
-                    
-                    seenUserIDs.insert(user.id)
-                    return user
-                }
-            }
-            
-            // 8. Atomic state update (IMPROVED)
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                
-                if self.moonLevelStacks[self.currentMoonLevel] == nil {
-                    self.moonLevelStacks[self.currentMoonLevel] = []
-                }
-                
-                self.moonLevelStacks[self.currentMoonLevel]?.append(contentsOf: newProfiles)
-                self.lastDocumentSnapshots[self.currentMoonLevel] = snapshot.documents.last
-                self.updateDisplayStack()
-                
-                print("✨ Added \(newProfiles.count) new profiles")
-                print("🆕 Stack now has \(self.profileStack.count) profiles")
-            }
-            
-            // 9. Preload images (unchanged)
-            await preloadImagesForUsers(newProfiles)
-            
-        } catch {
-            print("🔴 REFILL FAILED: \(error.localizedDescription)")
-            await MainActor.run {
-                errorMessage = "Refill failed: \(error.localizedDescription)"
-            }
-        }
-        
-        print("⏱️ Refill completed in \(String(format: "%.2f", Date().timeIntervalSince(refillStart)))s")
-    }
-
-    
-
     func likeUser(_ likedUser: User) async throws {
         let likedUserId = likedUser.id
         
@@ -494,141 +243,296 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    @MainActor
-    private func removeUserFromAllStacks(userId: String) {
-        for level in 0...4 {
-            moonLevelStacks[level]?.removeAll { $0.id == userId }
-        }
-        updateDisplayStack()
+    func createMatch(currentUserId: String, matchedUserId: String) async throws {
+        let batch = db.batch()
+        
+        // Generate a unique match ID
+        let matchId = [currentUserId, matchedUserId].sorted().joined(separator: "_")
+        
+        // Create match document in matches collection
+        let matchData: [String: Any] = [
+            "users": [currentUserId, matchedUserId],
+            "createdAt": FieldValue.serverTimestamp(),
+            "lastActivity": FieldValue.serverTimestamp() // Add lastActivity field
+        ]
+        let matchRef = db.collection("matches").document(matchId)
+        batch.setData(matchData, forDocument: matchRef)
+        
+        // Add match reference to both users' matches collection
+        let currentUserMatchRef = db.collection("users").document(currentUserId)
+            .collection("matches").document(matchId)
+        let matchedUserMatchRef = db.collection("users").document(matchedUserId)
+            .collection("matches").document(matchId)
+        
+        // Empty documents - just need the reference
+        batch.setData([:], forDocument: currentUserMatchRef)
+        batch.setData([:], forDocument: matchedUserMatchRef)
+        
+        try await batch.commit()
     }
-
-    func preloadCurrentUserImages() async {
-        guard let user = currentUser else {
-            print("⚠️ No current user found")
+    
+    //=======STACKS REFILLS========
+    
+    @Published var currentMoonLevel: Int = 2 {
+        didSet {
+            Task { @MainActor in
+                await initializeStacks()
+            }
+        }
+    }
+    
+    private func fetchUserData(uid: String) {
+        let docRef = db.collection("users").document(uid)
+        docRef.getDocument { [weak self] (document, error) in
+            if let document = document, document.exists {
+                do {
+                    let user = try document.data(as: User.self)
+                    DispatchQueue.main.async {
+                        self?.currentUser = user
+                        self?.errorMessage = ""
+                    }
+                } catch {
+                    print("Error decoding user: \(error)")
+                    self?.errorMessage = "Error fetching user data"
+                    
+                }
+            }
+        }
+    }
+    
+    @MainActor
+    private func loadProfiles(level: Int, dislikedIds: Set<String>, likedIds: Set<String>) async {
+        debugLog("⏳ Starting loadProfiles for level \(level)")
+        debugLog("📊 Current state - Disliked: \(dislikedIds.count), Liked: \(likedIds.count)")
+        
+        // 1. Check if we've reached the end for this level
+        guard (hasReachedEnd[level] ?? false) == false else {
+            debugLog("🛑 Early exit - hasReachedEnd[\(level)] is true")
             return
         }
         
-        print("📸 Preloading images for user: \(user.id)")
-        print("📸 URLs to load: \(user.pictureURLs)")
+        // 2. Build query with all original filters
+        var query = db.collection("users")
+            .whereField("gender", isEqualTo: currentUser?.genderPreference.rawValue ?? "")
+            .whereField("genderPreference", isEqualTo: currentUser?.gender.rawValue ?? "")
+            .whereField("age", isGreaterThanOrEqualTo: currentUser?.minAgePreference ?? 18)
+            .whereField("age", isLessThanOrEqualTo: currentUser?.maxAgePreference ?? 99)
+            .whereField("likeRatio", isGreaterThan: Double(level * 20))
+            .whereField("likeRatio", isLessThanOrEqualTo: Double((level + 1) * 20))
+            .limit(to: 10)
         
-        var images: [UIImage] = []
-        for urlString in user.pictureURLs {
-            do {
-                guard let url = URL(string: urlString) else {
-                    print("⚠️ Invalid URL: \(urlString)")
-                    continue
-                }
-                
-                let (data, response) = try await URLSession.shared.data(from: url)
-                
-                guard let httpResponse = response as? HTTPURLResponse,
-                      httpResponse.statusCode == 200 else {
-                    print("⚠️ Bad response for URL: \(urlString)")
-                    continue
-                }
-                
-                guard let image = UIImage(data: data) else {
-                    print("⚠️ Couldn't create image from data: \(urlString)")
-                    continue
-                }
-                
-                print("✅ Successfully loaded image from: \(urlString)")
-                images.append(image)
-            } catch {
-                print("❌ Error loading image: \(error.localizedDescription)")
-            }
+        // 3. Pagination support
+        if let lastDoc = lastDocumentSnapshots[level] {
+            debugLog("📖 Paginating after last document ID: \(lastDoc.documentID)")
+            query = query.start(afterDocument: lastDoc)
+        } else {
+            debugLog("🆕 Initial load for level \(level)")
         }
-        
-        await MainActor.run {
-            print("📱 Setting \(images.count) current user images")
-            self.currentUserImages = images
-        }
-    }
-    
-    func clearPreloadedImages() {
-        preloadedImages.removeAll()
-    }
-    
-    func areImagesPreloaded(for user: User) -> Bool {
-        user.pictureURLs.allSatisfy { url in
-            preloadedImages[url] != nil
-        }
-    }
-    
-    func getPreloadedImage(for url: String) -> UIImage? {
-        preloadedImages[url]
-    }
-    
-    private func updateUserFCMToken(userId: String, token: String) async throws {
-        print("📝 Starting Firestore token update for user: \(userId)")
-        print("🔑 Token to save: \(token)")
         
         do {
-            try await db.collection("users").document(userId).updateData([
-                "fcmToken": token
-            ])
-            print("✅ Token successfully saved to Firestore")
+            debugLog("🔥 Executing Firestore query for level \(level)")
+            let snapshot = try await query.getDocuments()
+            debugLog("✅ Received \(snapshot.documents.count) documents from Firestore")
+            
+            var newProfiles = [User]()
+            let currentStackIDs = Set(moonLevelStacks[level]?.map { $0.id } ?? [])
+            var filteredCount = 0
+            
+            // 4. Process documents - only filter liked/disliked and current stack dupes
+            for doc in snapshot.documents {
+                guard let user = try? doc.data(as: User.self) else {
+                    debugLog("❌ Failed to decode document \(doc.documentID)")
+                    continue
+                }
+                
+                if dislikedIds.contains(user.id) {
+                    debugLog("👎 Filtered out \(user.id) - previously disliked")
+                    filteredCount += 1
+                    continue
+                }
+                
+                if likedIds.contains(user.id) {
+                    debugLog("👍 Filtered out \(user.id) - previously liked")
+                    filteredCount += 1
+                    continue
+                }
+                
+                if currentStackIDs.contains(user.id) {
+                    debugLog("🔄 Filtered out \(user.id) - already in current stack")
+                    filteredCount += 1
+                    continue
+                }
+                
+                logProfile(user)
+                newProfiles.append(user)
+            }
+            
+            debugLog("🧮 Results - New: \(newProfiles.count), Filtered: \(filteredCount), Total docs: \(snapshot.documents.count)")
+            
+            // 5. Handle empty batches but more documents exist
+            if newProfiles.isEmpty && !snapshot.documents.isEmpty {
+                debugLog("🔁 No new profiles but documents exist - forcing pagination")
+                lastDocumentSnapshots[level] = snapshot.documents.last
+                await loadProfiles(level: level, dislikedIds: dislikedIds, likedIds: likedIds)
+                return
+            }
+            
+            // 6. Update state
+            await MainActor.run {
+                if moonLevelStacks[level] == nil {
+                    debugLog("🏗️ Initializing empty stack for level \(level)")
+                    moonLevelStacks[level] = []
+                }
+                
+                let beforeCount = moonLevelStacks[level]?.count ?? 0
+                moonLevelStacks[level]?.append(contentsOf: newProfiles)
+                let afterCount = moonLevelStacks[level]?.count ?? 0
+                
+                debugLog("📈 Level \(level) stack growth: \(beforeCount) → \(afterCount)")
+                
+                lastDocumentSnapshots[level] = snapshot.documents.last
+                hasReachedEnd[level] = newProfiles.isEmpty
+                
+                if newProfiles.isEmpty {
+                    debugLog("🏁 Reached end of profiles for level \(level)")
+                }
+                
+                updateDisplayStack()
+            }
+            
         } catch {
-            print("❌ Error saving token to Firestore: \(error)")
-            throw error
-        }
-    }
-    
-    private func preFetchMatchImages() async {
-        for match in matches {
-            guard let firstImageURL = match.pictureURLs.first,
-                  let url = URL(string: firstImageURL) else { continue }
-            
-            // Skip if already cached
-            if imageCache.object(forKey: firstImageURL as NSString) != nil {
-                continue
-            }
-            
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let image = UIImage(data: data) {
-                    imageCache.setObject(image, forKey: firstImageURL as NSString)
-                }
-            } catch {
-                print("Error pre-fetching image: \(error)")
+            debugLog("‼️ Error loading profiles: \(error.localizedDescription)")
+            await MainActor.run {
+                errorMessage = "Failed to load profiles"
             }
         }
     }
-    
-    
-    
-    func preloadImagesForUser(_ user: User) async {
-        for imageURL in user.pictureURLs {
-            // Skip if already preloaded
-            if preloadedImages[imageURL] != nil {
-                continue
-            }
+
+    func initializeStacks() async {
+        guard let currentUserID = currentUser?.id else {
+            debugLog("🔴 initializeStacks called without currentUser")
+            return
+        }
+        
+        debugLog("🔄 INITIALIZING STACKS for moon level \(currentMoonLevel)")
+        
+        // Reset all tracking state
+        await MainActor.run {
+            debugLog("🧹 Resetting tracking state")
+            debugLog("📝 Before reset - AllSeen: \(allSeenProfileIDs.count), MoonStacks: \(moonLevelStacks.mapValues { $0.count })")
             
-            guard let url = URL(string: imageURL) else { continue }
+            // allSeenProfileIDs.removeAll()
+            hasReachedEnd = [:]
+            lastDocumentSnapshots = [:]
+            moonLevelStacks = [0: [], 1: [], 2: [], 3: [], 4: []]
+            errorMessage = ""
             
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let image = UIImage(data: data) {
-                    await MainActor.run {
-                        preloadedImages[imageURL] = image
-                    }
-                }
-            } catch {
-                print("Error preloading image: \(error)")
-            }
+            debugLog("🆕 After reset - AllSeen: \(allSeenProfileIDs.count), MoonStacks: \(moonLevelStacks.mapValues { $0.count })")
+        }
+        
+        // Get filtered IDs
+        let (dislikedIds, likedIds) = (try? await getFilteredIds(for: currentUserID)) ?? (Set(), Set())
+        debugLog("🔍 Filtered IDs - Disliked: \(dislikedIds.count), Liked: \(likedIds.count)")
+        
+        // Load initial profiles
+        debugLog("⬇️ Starting initial profile load for level \(currentMoonLevel)")
+        await loadProfiles(level: currentMoonLevel, dislikedIds: dislikedIds, likedIds: likedIds)
+    }
+
+    func refillProfilesIfNeeded() async {
+        guard profileStack.count < minStackSize else {
+            debugLog("🆗 No refill needed - profileStack has \(profileStack.count) items")
+            return
+        }
+        
+        guard let currentUserID = currentUser?.id else {
+            debugLog("🔴 refillProfilesIfNeeded called without currentUser")
+            return
+        }
+        
+        debugLog("🔄 REFILLING PROFILES for moon level \(currentMoonLevel)")
+        
+        let (dislikedIds, likedIds) = (try? await getFilteredIds(for: currentUserID)) ?? (Set(), Set())
+        debugLog("🔍 Refill Filtered IDs - Disliked: \(dislikedIds.count), Liked: \(likedIds.count)")
+        
+        await loadProfiles(level: currentMoonLevel, dislikedIds: dislikedIds, likedIds: likedIds)
+    }
+
+    
+    @MainActor
+    private func updateDisplayStack() {
+        let beforeCount = profileStack.count
+        profileStack = moonLevelStacks[currentMoonLevel] ?? []
+        debugLog("🔄 Updated display stack: \(beforeCount) → \(profileStack.count) profiles")
+        
+        // Log current state of all levels
+        debugLog("🌕 Moon Levels State:")
+        for level in 0...4 {
+            let count = moonLevelStacks[level]?.count ?? 0
+            let reachedEnd = hasReachedEnd[level] ?? false
+            debugLog("   Level \(level): \(count) profiles, reachedEnd: \(reachedEnd)")
         }
     }
     
-    // Add function to preload images for multiple users
-    private func preloadImagesForUsers(_ users: [User]) async {
-        await withTaskGroup(of: Void.self) { group in
-            for user in users {
-                group.addTask {
-                    await self.preloadImagesForUser(user)
-                }
-            }
-        }
+    @MainActor
+    func resetState() {
+        self.currentUser = nil
+        self.currentUserImages = []
+        self.isLoggedIn = false
     }
+    
+    private func getFilteredIds(for userId: String) async throws -> (Set<String>, Set<String>) {
+        debugLog("🔎 Fetching filtered IDs for user \(userId)")
+        
+        async let dislikedDocs = db.collection("users").document(userId).collection("dislikes").getDocuments()
+        async let likedDocs = db.collection("users").document(userId).collection("likes_sent").getDocuments()
+        
+        let (disliked, liked) = try await (dislikedDocs, likedDocs)
+        
+        debugLog("📋 Fetched \(disliked.documents.count) disliked IDs and \(liked.documents.count) liked IDs")
+        
+        return (Set(disliked.documents.map { $0.documentID }),
+                Set(liked.documents.map { $0.documentID }))
+    }
+    
+    
+    
+    @MainActor
+    func checkProfileVisibility() -> Bool {
+        !profileStack.isEmpty
+    }
+    
+    @MainActor
+    func isLoadingCurrentLevel() -> Bool {
+        profileStack.isEmpty && !(moonLevelStacks[currentMoonLevel]?.isEmpty ?? true)
+    }
+    
+    @MainActor
+    func hasReachedEndForCurrentLevel() -> Bool {
+        (moonLevelStacks[currentMoonLevel] ?? []).isEmpty
+    }
+    
+    @MainActor
+    private func removeUserFromAllStacks(userId: String) {
+        debugLog("🗑️ Removing user \(userId) from all stacks")
+        
+        let beforeCounts = moonLevelStacks.mapValues { $0.count }
+        
+        for level in 0...4 {
+            moonLevelStacks[level]?.removeAll { $0.id == userId }
+        }
+        
+        let afterCounts = moonLevelStacks.mapValues { $0.count }
+        
+        debugLog("📊 Stack counts before removal: \(beforeCounts)")
+        debugLog("📊 Stack counts after removal: \(afterCounts)")
+        
+        updateDisplayStack()
+    }
+    
+    
+    
+    //======ONBOARDING FUNCS=======
     
     func signIn(email: String, password: String) async throws {
         print("🔐 Starting sign in process")
@@ -682,8 +586,8 @@ class ContentModel: NSObject, ObservableObject {
     }
     
     func createAccount(firstName: String, age: Int, gender: User.Gender,
-                      genderPreference: User.Gender, email: String,
-                      password: String, images: [UIImage]) async throws {
+                       genderPreference: User.Gender, email: String,
+                       password: String, images: [UIImage]) async throws {
         print("📝 Starting account creation process")
         print("📸 Number of images to upload: \(images.count)")
         
@@ -767,29 +671,8 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    func checkAuthStatus() {
-        if Auth.auth().currentUser != nil {
-            // Instead of immediately setting isLoggedIn to true,
-            // fetch the user data first
-            Task {
-                do {
-                    try await refreshCurrentUser()
-                    await MainActor.run {
-                        self.isLoggedIn = true
-                    }
-                } catch {
-                    print("❌ Error refreshing user: \(error)")
-                    await MainActor.run {
-                        self.isLoggedIn = false
-                    }
-                }
-            }
-        } else {
-            isLoggedIn = false
-        }
-    }
     
-
+    
     func signOut() async throws {
         if let userId = Auth.auth().currentUser?.uid {
             try await updateUserFCMToken(userId: userId, token: "")
@@ -808,6 +691,31 @@ class ContentModel: NSObject, ObservableObject {
         } catch {
             print("❌ Error signing out: \(error.localizedDescription)")
             throw error
+        }
+    }
+    
+    private func updateUserFCMToken(userId: String, token: String) async throws {
+        print("📝 Starting Firestore token update for user: \(userId)")
+        print("🔑 Token to save: \(token)")
+        
+        do {
+            try await db.collection("users").document(userId).updateData([
+                "fcmToken": token
+            ])
+            print("✅ Token successfully saved to Firestore")
+        } catch {
+            print("❌ Error saving token to Firestore: \(error)")
+            throw error
+        }
+    }
+    
+    @objc private func updateFCMToken(_ notification: Notification) {
+        print("📱 updateFCMToken called in ContentModel")
+        if let token = notification.userInfo?["token"] as? String {
+            print("🔄 Received new FCM token in ContentModel: \(token)")
+            self.fcmToken = token
+            // Don't try to update Firestore here - wait for explicit login
+            print("💾 Token stored locally, waiting for user login")
         }
     }
     
@@ -897,35 +805,114 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    func createMatch(currentUserId: String, matchedUserId: String) async throws {
-        let batch = db.batch()
+    
+    //=======PRELOADING==========
+    
+    func preloadCurrentUserImages() async {
+        guard let user = currentUser else {
+            print("⚠️ No current user found")
+            return
+        }
         
-        // Generate a unique match ID
-        let matchId = [currentUserId, matchedUserId].sorted().joined(separator: "_")
+        print("📸 Preloading images for user: \(user.id)")
+        print("📸 URLs to load: \(user.pictureURLs)")
         
-        // Create match document in matches collection
-        let matchData: [String: Any] = [
-            "users": [currentUserId, matchedUserId],
-            "createdAt": FieldValue.serverTimestamp(),
-            "lastActivity": FieldValue.serverTimestamp() // Add lastActivity field
-        ]
-        let matchRef = db.collection("matches").document(matchId)
-        batch.setData(matchData, forDocument: matchRef)
+        var images: [UIImage] = []
+        for urlString in user.pictureURLs {
+            do {
+                guard let url = URL(string: urlString) else {
+                    print("⚠️ Invalid URL: \(urlString)")
+                    continue
+                }
+                
+                let (data, response) = try await URLSession.shared.data(from: url)
+                
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else {
+                    print("⚠️ Bad response for URL: \(urlString)")
+                    continue
+                }
+                
+                guard let image = UIImage(data: data) else {
+                    print("⚠️ Couldn't create image from data: \(urlString)")
+                    continue
+                }
+                
+                print("✅ Successfully loaded image from: \(urlString)")
+                images.append(image)
+            } catch {
+                print("❌ Error loading image: \(error.localizedDescription)")
+            }
+        }
         
-        // Add match reference to both users' matches collection
-        let currentUserMatchRef = db.collection("users").document(currentUserId)
-            .collection("matches").document(matchId)
-        let matchedUserMatchRef = db.collection("users").document(matchedUserId)
-            .collection("matches").document(matchId)
-        
-        // Empty documents - just need the reference
-        batch.setData([:], forDocument: currentUserMatchRef)
-        batch.setData([:], forDocument: matchedUserMatchRef)
-        
-        try await batch.commit()
+        await MainActor.run {
+            print("📱 Setting \(images.count) current user images")
+            self.currentUserImages = images
+        }
     }
     
+    func getPreloadedImage(for url: String) -> UIImage? {
+        preloadedImages[url]
+    }
+    
+    private func preFetchMatchImages() async {
+        for match in matches {
+            guard let firstImageURL = match.pictureURLs.first,
+                  let url = URL(string: firstImageURL) else { continue }
+            
+            // Skip if already cached
+            if imageCache.object(forKey: firstImageURL as NSString) != nil {
+                continue
+            }
+            
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                if let image = UIImage(data: data) {
+                    imageCache.setObject(image, forKey: firstImageURL as NSString)
+                }
+            } catch {
+                print("Error pre-fetching image: \(error)")
+            }
+        }
+    }
+    
+    func preloadImagesForUser(_ user: User) async {
+        for imageURL in user.pictureURLs {
+            // Skip if already preloaded
+            if preloadedImages[imageURL] != nil {
+                continue
+            }
+            
+            guard let url = URL(string: imageURL) else { continue }
+            
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                if let image = UIImage(data: data) {
+                    await MainActor.run {
+                        preloadedImages[imageURL] = image
+                    }
+                }
+            } catch {
+                print("Error preloading image: \(error)")
+            }
+        }
+    }
+    
+    private func preloadImagesForUsers(_ users: [User]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for user in users {
+                group.addTask {
+                    await self.preloadImagesForUser(user)
+                }
+            }
+        }
+    }
+    
+    //=======MATCHES AND MESSAGING========
+    
     func fetchMatches() async throws {
+        
+        
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
         }
@@ -965,7 +952,7 @@ class ContentModel: NSObject, ObservableObject {
         }
         await preFetchMatchImages()
     }
-        
+    
     func sendMessage(to matchId: String, text: String) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -1343,32 +1330,22 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    @objc private func updateFCMToken(_ notification: Notification) {
-        print("📱 updateFCMToken called in ContentModel")
-        if let token = notification.userInfo?["token"] as? String {
-            print("🔄 Received new FCM token in ContentModel: \(token)")
-            self.fcmToken = token
-            // Don't try to update Firestore here - wait for explicit login
-            print("💾 Token stored locally, waiting for user login")
-        }
-    }
-    
-    // Analytics:
+    // ANALYTICS:
     
     func logUserSignup(userAge: Int, userGender: User.Gender) {
-            Analytics.logEvent("user_signup", parameters: [
-                "age": userAge,
-                "gender": userGender.rawValue,
-                "num_photos": currentUser?.pictureURLs.count ?? 0
-            ])
-        }
-
-        func logUserLogin() {
-            Analytics.logEvent("user_login", parameters: [
-                "user_id": Auth.auth().currentUser?.uid ?? "",
-                "has_matches": !matches.isEmpty
-            ])
-        }
+        Analytics.logEvent("user_signup", parameters: [
+            "age": userAge,
+            "gender": userGender.rawValue,
+            "num_photos": currentUser?.pictureURLs.count ?? 0
+        ])
+    }
+    
+    func logUserLogin() {
+        Analytics.logEvent("user_login", parameters: [
+            "user_id": Auth.auth().currentUser?.uid ?? "",
+            "has_matches": !matches.isEmpty
+        ])
+    }
     
     func logShareEvent(shareType: String) {
         Analytics.logEvent("user_share", parameters: [
@@ -1376,85 +1353,76 @@ class ContentModel: NSObject, ObservableObject {
             "user_id": currentUser?.id ?? "unknown"
         ])
     }
-
-        func logUserLogout() {
-            Analytics.logEvent("user_logout", parameters: nil)
-        }
-
-        func logAccountDeletion(reason: String?) {
-            Analytics.logEvent("account_deletion", parameters: [
-                "reason": reason ?? "not_specified",
-                "account_lifetime_days": daysSinceSignup()
-            ])
-        }
-
-        // Interaction Events
-        func logUserLike(targetUserAge: Int, matchOccurred: Bool) {
-            Analytics.logEvent("user_like", parameters: [
-                "target_user_age": targetUserAge,
-                "resulted_in_match": matchOccurred,
-                "current_moon_level": currentMoonLevel
-            ])
-        }
-
-        func logUserDislike(targetUserAge: Int) {
-            Analytics.logEvent("user_dislike", parameters: [
-                "target_user_age": targetUserAge,
-                "current_moon_level": currentMoonLevel
-            ])
-        }
-
-        func logMatchInteraction(matchId: String, interactionType: String) {
-            Analytics.logEvent("match_interaction", parameters: [
-                "match_id": matchId,
-                "interaction_type": interactionType
-            ])
-        }
-
-        // Chat Events
-        func logMessageSent(matchId: String, messageLength: Int) {
-            Analytics.logEvent("message_sent", parameters: [
-                "match_id": matchId,
-                "message_length": messageLength
-            ])
-        }
-
-        func logUnmatch(matchId: String, matchDuration: TimeInterval, rating: Int) {
-            Analytics.logEvent("unmatch", parameters: [
-                "match_id": matchId,
-                "match_duration_hours": matchDuration/3600,
-                "final_rating": rating
-            ])
-        }
-
-        // Feature Usage Events
-        func logSocialRequestSent(matchId: String) {
-            Analytics.logEvent("social_request_sent", parameters: [
-                "match_id": matchId
-            ])
-        }
-
-        func logDateRequestSent(matchId: String) {
-            Analytics.logEvent("date_request_sent", parameters: [
-                "match_id": matchId
-            ])
-        }
-
-        // Stack Events
-        func logStackRefill(level: Int, newStackSize: Int) {
-            Analytics.logEvent("stack_refill", parameters: [
-                "moon_level": level,
-                "new_stack_size": newStackSize
-            ])
-        }
-
-        // Helper function for account age
-        private func daysSinceSignup() -> Int {
-            guard let creationDate = Auth.auth().currentUser?.metadata.creationDate else { return 0 }
-            return Calendar.current.dateComponents([.day], from: creationDate, to: Date()).day ?? 0
-        }
     
-     func getMatchDuration(_ matchId: String) async -> TimeInterval {
+    func logUserLogout() {
+        Analytics.logEvent("user_logout", parameters: nil)
+    }
+    
+    func logAccountDeletion(reason: String?) {
+        Analytics.logEvent("account_deletion", parameters: [
+            "reason": reason ?? "not_specified",
+            "account_lifetime_days": daysSinceSignup()
+        ])
+    }
+    
+    
+    func logUserLike(targetUserAge: Int, matchOccurred: Bool) {
+        Analytics.logEvent("user_like", parameters: [
+            "target_user_age": targetUserAge,
+            "resulted_in_match": matchOccurred,
+            "current_moon_level": currentMoonLevel
+        ])
+    }
+    
+    func logUserDislike(targetUserAge: Int) {
+        Analytics.logEvent("user_dislike", parameters: [
+            "target_user_age": targetUserAge,
+            "current_moon_level": currentMoonLevel
+        ])
+    }
+    
+    func logMatchInteraction(matchId: String, interactionType: String) {
+        Analytics.logEvent("match_interaction", parameters: [
+            "match_id": matchId,
+            "interaction_type": interactionType
+        ])
+    }
+    
+    
+    func logMessageSent(matchId: String, messageLength: Int) {
+        Analytics.logEvent("message_sent", parameters: [
+            "match_id": matchId,
+            "message_length": messageLength
+        ])
+    }
+    
+    func logUnmatch(matchId: String, matchDuration: TimeInterval, rating: Int) {
+        Analytics.logEvent("unmatch", parameters: [
+            "match_id": matchId,
+            "match_duration_hours": matchDuration/3600,
+            "final_rating": rating
+        ])
+    }
+    
+    
+    func logSocialRequestSent(matchId: String) {
+        Analytics.logEvent("social_request_sent", parameters: [
+            "match_id": matchId
+        ])
+    }
+    
+    func logDateRequestSent(matchId: String) {
+        Analytics.logEvent("date_request_sent", parameters: [
+            "match_id": matchId
+        ])
+    }
+    
+    private func daysSinceSignup() -> Int {
+        guard let creationDate = Auth.auth().currentUser?.metadata.creationDate else { return 0 }
+        return Calendar.current.dateComponents([.day], from: creationDate, to: Date()).day ?? 0
+    }
+    
+    func getMatchDuration(_ matchId: String) async -> TimeInterval {
         do {
             let matchDoc = try await db.collection("matches").document(matchId).getDocument()
             

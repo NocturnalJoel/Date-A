@@ -14,7 +14,7 @@ struct Date_AApp: App {
         let gcmMessageIDKey = "gcm.message_id"
         
         func application(_ application: UIApplication,
-                        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+                         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
             print("🚀 AppDelegate didFinishLaunching")
             
             // Set messaging delegate before requesting permissions
@@ -39,7 +39,7 @@ struct Date_AApp: App {
         }
         
         func application(_ application: UIApplication,
-                        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+                         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
             print("📱 Received device token")
             Messaging.messaging().apnsToken = deviceToken
         }
@@ -69,6 +69,10 @@ struct Date_AApp: App {
                         HomeView()
                             .environmentObject(model)
                             .preferredColorScheme(.light)
+                            .task {
+                                // This will run when the view appears
+                                await model.initializeStacks()
+                            }
                     } else {
                         FirstView()
                             .environmentObject(model)
@@ -100,9 +104,9 @@ extension Date_AApp.AppDelegate: MessagingDelegate {
 // MARK: - UNUserNotificationCenterDelegate
 extension Date_AApp.AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
-                              willPresent notification: UNNotification,
-                              withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions)
-                              -> Void) {
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions)
+                                -> Void) {
         let userInfo = notification.request.content.userInfo
         print("📬 Received notification while app in foreground")
         
@@ -114,8 +118,8 @@ extension Date_AApp.AppDelegate: UNUserNotificationCenterDelegate {
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter,
-                              didReceive response: UNNotificationResponse,
-                              withCompletionHandler completionHandler: @escaping () -> Void) {
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
         print("👆 User tapped notification")
         
