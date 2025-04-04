@@ -229,6 +229,31 @@ struct ChatView: View {
             .background(Color.white)
             .shadow(color: Color.black.opacity(0.05), radius: 5, y: 5)
             
+            if let approachLine = matchedUser.approachLine, !approachLine.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Your match wants people to tell them about...")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.black))
+                    
+                    Text(approachLine)
+                        .font(.system(size: 14, weight: .medium))
+                        .italic()
+                        .foregroundColor(.black)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
+                        )
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+            
             // Messages
             ScrollViewReader { proxy in
                 ScrollView {

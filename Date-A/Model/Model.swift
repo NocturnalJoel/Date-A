@@ -15,6 +15,7 @@ struct User: Identifiable, Codable, Equatable, Hashable {
     var maxAgePreference: Int
     var fcmToken: String?
     var likeRatio: Double
+    var approachLine: String?
     
     enum Gender: String, Codable, CaseIterable {
         case male = "Male"
@@ -33,7 +34,8 @@ struct User: Identifiable, Codable, Equatable, Hashable {
          timesLiked: Int = 0,
          minAgePreference: Int = 18,
          maxAgePreference: Int = 99,
-         fcmToken: String? = nil) {
+         fcmToken: String? = nil,
+         approachLine: String? = nil) {  // Add this parameter with default empty string
         self.id = id
         self.firstName = firstName
         self.age = age
@@ -47,6 +49,7 @@ struct User: Identifiable, Codable, Equatable, Hashable {
         self.maxAgePreference = maxAgePreference
         self.fcmToken = fcmToken
         self.likeRatio = Self.calculateInitialRatio(timesLiked: timesLiked, timesDisliked: timesDisliked)
+        self.approachLine = approachLine  // Add this initialization
     }
     
     private static func calculateInitialRatio(timesLiked: Int, timesDisliked: Int) -> Double {

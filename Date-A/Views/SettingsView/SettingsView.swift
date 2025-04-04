@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var isSaving = false
     @State private var showDeleteAccount = false
     @State private var isSaved = false
+    @State private var approachLine: String = ""
 
     private func refreshUserData() async {
         do {
@@ -30,6 +31,7 @@ struct SettingsView: View {
                     minAge = Double(user.minAgePreference)
                     maxAge = Double(user.maxAgePreference)
                     selectedImages = model.currentUserImages
+                    approachLine = user.approachLine ?? ""
                     print("✅ Refreshed user data. Selected images: \(selectedImages.count)")
                 }
             }
@@ -67,7 +69,8 @@ struct SettingsView: View {
                                 images: selectedImages,
                                 minAge: minAge,
                                 maxAge: maxAge,
-                                genderPreference: selectedPreference
+                                genderPreference: selectedPreference,
+                                approachLine: approachLine
                             )
                             print("Settings updated successfully") // Debug
                             
@@ -130,6 +133,8 @@ struct SettingsView: View {
                         selectedPreference: $selectedPreference
                     )
                     
+                    ApproachLineView(approachLine: $approachLine)
+                    
                     RatioSectionView(
                         ratio: model.currentUser?.likeRatio ?? 0.0
                     )
@@ -155,6 +160,7 @@ struct SettingsView: View {
                 await refreshUserData()
                 selectedImages = []
                 selectedImages = model.currentUserImages
+                approachLine = model.currentUser?.approachLine ?? ""
                 isSaved = false
             }
         }
@@ -374,6 +380,8 @@ struct AgePreferenceView: View {
 struct GenderPreferenceView: View {
     @Binding var selectedPreference: User.Gender
     
+    
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Interested in")
@@ -390,6 +398,31 @@ struct GenderPreferenceView: View {
             .background(Color.gray.opacity(0.1))
             .cornerRadius(12)
             .buttonStyle(.plain)
+        }
+        
+        // Approach Line Section
+        
+    }
+}
+
+struct ApproachLineView: View {
+    @Binding var approachLine: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("My matches should text me about...")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.gray)
+            
+            TextEditor(text: $approachLine)
+                .frame(height: 100)
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                )
         }
     }
 }

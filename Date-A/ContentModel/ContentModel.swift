@@ -118,11 +118,18 @@ class ContentModel: NSObject, ObservableObject {
         
         // 2. Calculate New Like Ratio
         let newLikes = likedUser.timesLiked + 1
-        let newTotal = newLikes + likedUser.timesDisliked
-        let newRatio: Double = {
-            if newTotal == 0 { return 50.0 }
-            return (Double(newLikes) / Double(newTotal)) * 100
-        }()
+            let newDislikes = likedUser.timesDisliked
+            let newRatio: Double = {
+                if newLikes == 0 && newDislikes == 0 {
+                    return 50.0 // Brand new profile
+                } else if newDislikes == 0 {
+                    return 50.0 // Only likes exist
+                } else if newLikes == 0 {
+                    return 50.0 // Only dislikes exist
+                } else {
+                    return (Double(newLikes) / Double(newLikes + newDislikes)) * 100
+                }
+            }()
         
         // 3. Firebase Batch Operation
         let batch = db.batch()
@@ -189,12 +196,20 @@ class ContentModel: NSObject, ObservableObject {
         }
         
         // 2. Calculate New Ratio
-        let newDislikes = dislikedUser.timesDisliked + 1
-        let newTotal = dislikedUser.timesLiked + newDislikes
-        let newRatio: Double = {
-            if newTotal == 0 { return 50.0 }
-            return (Double(dislikedUser.timesLiked) / Double(newTotal)) * 100
-        }()
+        // 2. Calculate New Ratio (Updated Logic)
+            let currentLikes = dislikedUser.timesLiked
+            let newDislikes = dislikedUser.timesDisliked + 1
+            let newRatio: Double = {
+                if currentLikes == 0 && newDislikes == 0 {
+                    return 50.0 // Shouldn't happen, but safety check
+                } else if newDislikes == 0 {
+                    return 50.0 // Only likes exist
+                } else if currentLikes == 0 {
+                    return 50.0 // Only dislikes exist
+                } else {
+                    return (Double(currentLikes) / Double(currentLikes + newDislikes)) * 100
+                }
+            }()
         
         // 3. Firebase Operations
         let batch = db.batch()
@@ -286,7 +301,11 @@ class ContentModel: NSObject, ObservableObject {
         docRef.getDocument { [weak self] (document, error) in
             if let document = document, document.exists {
                 do {
-                    let user = try document.data(as: User.self)
+                    var user = try document.data(as: User.self)
+                    // Handle potential missing approachLine
+                    if user.approachLine == nil {
+                        user.approachLine = ""
+                    }
                     DispatchQueue.main.async {
                         self?.currentUser = user
                         self?.errorMessage = ""
@@ -294,7 +313,6 @@ class ContentModel: NSObject, ObservableObject {
                 } catch {
                     print("Error decoding user: \(error)")
                     self?.errorMessage = "Error fetching user data"
-                    
                 }
             }
         }
@@ -344,6 +362,8 @@ class ContentModel: NSObject, ObservableObject {
                     debugLog("❌ Failed to decode document \(doc.documentID)")
                     continue
                 }
+                
+               
                 
                 if dislikedIds.contains(user.id) {
                     debugLog("👎 Filtered out \(user.id) - previously disliked")
@@ -587,7 +607,8 @@ class ContentModel: NSObject, ObservableObject {
     
     func createAccount(firstName: String, age: Int, gender: User.Gender,
                        genderPreference: User.Gender, email: String,
-                       password: String, images: [UIImage]) async throws {
+                       password: String, images: [UIImage],
+                       approachLine: String) async throws {
         print("📝 Starting account creation process")
         print("📸 Number of images to upload: \(images.count)")
         
@@ -635,18 +656,18 @@ class ContentModel: NSObject, ObservableObject {
                 age: age,
                 gender: gender,
                 genderPreference: genderPreference,
-                email: email,  // Make sure to include email here
+                email: email,
                 pictureURLs: pictureURLs,
                 timesDisliked: 0,
                 timesLiked: 0,
                 minAgePreference: 18,
                 maxAgePreference: 99,
-                fcmToken: self.fcmToken
+                fcmToken: self.fcmToken,
+                approachLine: approachLine
             )
             
             // 4. Create Firestore document
             print("📄 Creating Firestore document...")
-            // Using Codable to automatically encode all fields, including email
             try await db.collection("users").document(userId).setData(from: newUser)
             logUserSignup(userAge: age, userGender: gender)
             print("✅ Firestore document created successfully")
@@ -654,11 +675,8 @@ class ContentModel: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self.currentUser = newUser
                 self.isLoggedIn = true
-                
                 UserDefaults.standard.set(true, forKey: "isUserLoggedIn")
                 UserDefaults.standard.set(userId, forKey: "lastLoggedInUserId")
-                
-                
             }
             
             print("🎉 Account creation completed successfully!")
@@ -719,7 +737,13 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    func updateUserSettings(images: [UIImage], minAge: Double, maxAge: Double, genderPreference: User.Gender) async throws {
+    func updateUserSettings(
+        images: [UIImage],
+        minAge: Double,
+        maxAge: Double,
+        genderPreference: User.Gender,
+        approachLine: String  // Add new parameter
+    ) async throws {
         guard var updatedUser = currentUser else {
             throw NSError(domain: "ContentModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "No current user found"])
         }
@@ -749,20 +773,28 @@ class ContentModel: NSObject, ObservableObject {
             }
         }
         
-        // Update user model
+        // Update user model with all fields including the new approachLine
         updatedUser.pictureURLs = pictureURLs
         updatedUser.minAgePreference = Int(minAge)
         updatedUser.maxAgePreference = Int(maxAge)
         updatedUser.genderPreference = genderPreference
+        updatedUser.approachLine = approachLine  // Set the new field
         
-        // Update Firestore
+        // Update Firestore with all fields including approachLine
         do {
-            try await db.collection("users").document(updatedUser.id).updateData([
+            var updateData: [String: Any] = [
                 "pictureURLs": pictureURLs,
                 "minAgePreference": Int(minAge),
                 "maxAgePreference": Int(maxAge),
                 "genderPreference": genderPreference.rawValue
-            ])
+            ]
+            
+            // Only include approachLine if it's not empty to avoid overwriting with empty string
+            if !approachLine.isEmpty {
+                updateData["approachLine"] = approachLine
+            }
+            
+            try await db.collection("users").document(updatedUser.id).updateData(updateData)
             print("✅ Successfully updated Firestore document")
         } catch {
             print("❌ Error updating Firestore document: \(error.localizedDescription)")
@@ -912,7 +944,7 @@ class ContentModel: NSObject, ObservableObject {
     
     func fetchMatches() async throws {
         
-        
+        print("worked")
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
         }
@@ -1056,16 +1088,36 @@ class ContentModel: NSObject, ObservableObject {
         let docRef = db.collection("users").document(userId)
         let document = try await docRef.getDocument()
         
-        guard let userData = try? document.data(as: User.self) else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not decode user data"])
+        do {
+            var user = try document.data(as: User.self)
+            // Handle potential missing approachLine
+            if user.approachLine == nil {
+                user.approachLine = ""
+            }
+            await MainActor.run {
+                self.currentUser = user
+            }
+        } catch {
+            // Fallback to manual decoding if automatic fails
+            if let data = document.data() {
+                let fallbackUser = User(
+                    id: userId,
+                    firstName: data["firstName"] as? String ?? "",
+                    age: data["age"] as? Int ?? 0,
+                    gender: User.Gender(rawValue: data["gender"] as? String ?? "") ?? .other,
+                    genderPreference: User.Gender(rawValue: data["genderPreference"] as? String ?? "") ?? .other,
+                    email: data["email"] as? String ?? "",
+                    pictureURLs: data["pictureURLs"] as? [String] ?? [],
+                    approachLine: data["approachLine"] as? String ?? "" // Default empty string
+                )
+                await MainActor.run {
+                    self.currentUser = fallbackUser
+                }
+            } else {
+                throw error
+            }
         }
         
-        await MainActor.run {
-            self.currentUser = userData
-            print("✅ Refreshed current user. Picture URLs: \(userData.pictureURLs)")
-        }
-        
-        // Preload the current user's images
         await preloadCurrentUserImages()
     }
     

@@ -23,6 +23,7 @@ struct CreateAccountView: View {
     @State private var progressValue: CGFloat = 0
     @State private var showProgress = false
     @State private var verifyPassword = ""
+    @State private var approachLine = ""
     
     // Create Account states
     @State private var firstName = ""
@@ -153,6 +154,16 @@ struct CreateAccountView: View {
                             .padding(6)
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(12)
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("My matches should talk to me about...")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.gray)
+                            TextField("e.g., Favorite travel story", text: $approachLine)
+                                .font(.system(size: 17))
+                                .padding()
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(12)
                         }
                     }
                     
@@ -369,7 +380,9 @@ struct CreateAccountView: View {
                     genderPreference: selectedPreference,
                     email: createEmail,
                     password: createPassword,
-                    images: selectedImages
+                    images: selectedImages,
+                    approachLine: approachLine
+                    
                 )
             } catch {
                 showProgress = false
