@@ -984,23 +984,25 @@ class ContentModel: NSObject, ObservableObject {
         }
         await preFetchMatchImages()
     }
-    
     func sendMessage(to matchId: String, text: String) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
         
-        // Create the message object (timestamp is set locally in the Message initializer)
+        
+        
+        // 1. Create message with LOCAL timestamp (critical for instant show)
         let message = Message(senderId: currentUserId, text: text)
         
-        // Log message sent (assuming this is a custom logging function)
-        logMessageSent(matchId: matchId, messageLength: text.count)
+        // 2. OPTIMISTIC UPDATE - Add to UI immediately
+        await MainActor.run {
+            self.messages.append(message)
+        }
         
-        // Create a batch to update both the message and the match's lastActivity
+        // 3. Firestore operations (now happens in background)
         let batch = db.batch()
         
-        // Add the message to the messages subcollection
         let messageRef = db.collection("matches")
             .document(matchId)
             .collection("messages")
@@ -1008,19 +1010,29 @@ class ContentModel: NSObject, ObservableObject {
         batch.setData([
             "senderId": message.senderId,
             "text": message.text,
-            "timestamp": message.timestamp // Use the local timestamp from the Message object
+            "timestamp": message.timestamp // Using local timestamp
         ], forDocument: messageRef)
         
-        // Update the lastActivity field in the match document to the server timestamp
         let matchRef = db.collection("matches").document(matchId)
         batch.updateData([
-            "lastActivity": FieldValue.serverTimestamp() // Update lastActivity to the server timestamp
+            "lastActivity": FieldValue.serverTimestamp()
         ], forDocument: matchRef)
         
-        // Commit the batch
-        try await batch.commit()
-        
-        try await fetchMatches()
+        // 4. Commit with silent error handling
+        do {
+            try await batch.commit()
+            // Optional: Light refresh to sync any server-side changes
+            try await fetchMessages(for: matchId)
+            
+            try await fetchMatches()
+        } catch {
+            // 5. Rollback on failure (user won't see anything)
+            await MainActor.run {
+                self.messages.removeAll { $0.id == message.id }
+            }
+            // Re-throw if you want callers to handle errors
+            throw error
+        }
     }
     
     func fetchMessages(for matchId: String) async throws {
@@ -1066,7 +1078,9 @@ class ContentModel: NSObject, ObservableObject {
             
             print("🔄 Converted \(fetchedMessages.count) documents to Message objects")
             
-            await MainActor.run {
+            // CRITICAL CHANGE: Now using Task+MainActor instead of await MainActor.run
+            // This preserves all logs while ensuring thread safety
+            Task { @MainActor in
                 self.messages = fetchedMessages
                 print("📱 Updated UI with \(self.messages.count) messages")
             }
