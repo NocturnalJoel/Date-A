@@ -30,14 +30,21 @@ struct ProfileCardView: View {
                                 image
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
+                                let _ = debugPrint("✅ Loaded image: \(url)")
                             case .failure(_):
+                                
                                 Image(systemName: "person.fill")
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .padding()
                                     .foregroundColor(.orange)
+                                
                             case .empty:
-                                Color.clear
+                                let _ = debugPrint("⏳ Loading image: \(url)")
+                                Color.gray.opacity(0.1)
+                                    .overlay(
+                                                ShimmerEffectBox()
+                                            )
                             @unknown default:
                                 EmptyView()
                             }
@@ -150,5 +157,45 @@ struct ProfileCardView: View {
         .sheet(isPresented: $showShareSheet) {
             ShareSheetView(hasSharedApp: $hasSharedApp)
         }
+    }
+}
+struct ShimmerEffectBox: View {
+    @State private var shimmerPosition = -1.0
+    
+    var body: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color.gray.opacity(0.2),
+                        Color.gray.opacity(0.4),
+                        Color.gray.opacity(0.2)
+                    ]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .mask(Rectangle())
+            .overlay(
+                Rectangle()
+                    .fill(Color.white.opacity(0.7))
+                    .mask(
+                        Rectangle()
+                            .fill(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [.clear, .white.opacity(0.5), .clear]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: 100)
+                            .offset(x: shimmerPosition * 200)
+                    )
+            )
+            .onAppear {
+                withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    shimmerPosition = 1.0
+                }
+            }
     }
 }

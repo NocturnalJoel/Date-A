@@ -339,6 +339,7 @@ class ContentModel: NSObject, ObservableObject {
             .whereField("likeRatio", isLessThanOrEqualTo: Double((level + 1) * 20))
             .limit(to: 10)
         
+        
         // 3. Pagination support
         if let lastDoc = lastDocumentSnapshots[level] {
             debugLog("📖 Paginating after last document ID: \(lastDoc.documentID)")
@@ -606,86 +607,119 @@ class ContentModel: NSObject, ObservableObject {
     }
     
     func createAccount(firstName: String, age: Int, gender: User.Gender,
-                       genderPreference: User.Gender, email: String,
-                       password: String, images: [UIImage],
-                       approachLine: String) async throws {
+                      genderPreference: User.Gender, email: String,
+                      password: String, images: [UIImage],
+                      approachLine: String) async throws {
         print("📝 Starting account creation process")
-        print("📸 Number of images to upload: \(images.count)")
         
         DispatchQueue.main.async {
             self.isLoading = true
             self.errorMessage = ""
         }
         defer {
-            print("🔄 Account creation process ended")
             DispatchQueue.main.async {
                 self.isLoading = false
             }
         }
         
-        do {
-            // 1. Create Authentication account
-            print("🔑 Creating authentication account...")
-            let authResult = try await Auth.auth().createUser(withEmail: email, password: password)
-            let userId = authResult.user.uid
-            print("✅ Auth account created successfully with ID: \(userId)")
+        // 1. Create Authentication account
+        let authResult = try await Auth.auth().createUser(withEmail: email, password: password)
+        let userId = authResult.user.uid
+        var pictureURLs: [String] = []
+        
+        // 2. Upload images with verification
+        for (index, image) in images.enumerated() {
+            guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+                throw ImageError.processingFailed(index: index + 1)
+            }
             
-            // 2. Upload images to Storage
-            print("📤 Starting image uploads...")
-            var pictureURLs: [String] = []
+            let imageRef = Storage.storage().reference().child("users/\(userId)/profile_\(index).jpg")
             
-            for (index, image) in images.enumerated() {
-                guard let imageData = image.jpegData(compressionQuality: 0.7) else { continue }
+            do {
+                // Upload with progress tracking
+                let metadata = StorageMetadata()
+                metadata.contentType = "image/jpeg"
                 
-                let imagePath = "users/\(userId)/profile_\(index).jpg"
-                let imageRef = storage.reference().child(imagePath)
+                _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<StorageMetadata, Error>) in
+                    let uploadTask = imageRef.putData(imageData, metadata: metadata)
+                    
+                    uploadTask.observe(.success) { snapshot in
+                        if let metadata = snapshot.metadata {
+                            continuation.resume(returning: metadata)
+                        } else {
+                            continuation.resume(throwing: ImageError.missingMetadata)
+                        }
+                    }
+                    
+                    uploadTask.observe(.failure) { snapshot in
+                        if let error = snapshot.error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(throwing: ImageError.unknownUploadError)
+                        }
+                    }
+                }
                 
-                _ = try await imageRef.putDataAsync(imageData)
+                // Verify download URL
                 let downloadURL = try await imageRef.downloadURL()
+                let (_, response) = try await URLSession.shared.data(from: downloadURL)
+                
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw ImageError.verificationFailed(index: index + 1)
+                }
+                
                 pictureURLs.append(downloadURL.absoluteString)
+            } catch {
+                try? await imageRef.delete()
+                throw error
             }
-            
-            print("✅ All images uploaded successfully")
-            print("📸 URLs loaded: \(pictureURLs)")
-            
-            // 3. Create User object
-            print("👤 Creating user object...")
-            let newUser = User(
-                id: userId,
-                firstName: firstName,
-                age: age,
-                gender: gender,
-                genderPreference: genderPreference,
-                email: email,
-                pictureURLs: pictureURLs,
-                timesDisliked: 0,
-                timesLiked: 0,
-                minAgePreference: 18,
-                maxAgePreference: 99,
-                fcmToken: self.fcmToken,
-                approachLine: approachLine
-            )
-            
-            // 4. Create Firestore document
-            print("📄 Creating Firestore document...")
-            try await db.collection("users").document(userId).setData(from: newUser)
-            logUserSignup(userAge: age, userGender: gender)
-            print("✅ Firestore document created successfully")
-            
-            DispatchQueue.main.async {
-                self.currentUser = newUser
-                self.isLoggedIn = true
-                UserDefaults.standard.set(true, forKey: "isUserLoggedIn")
-                UserDefaults.standard.set(userId, forKey: "lastLoggedInUserId")
+        }
+        
+        guard !pictureURLs.isEmpty else {
+            throw ImageError.noValidImages
+        }
+        
+        // 3. Create Firestore document
+        let newUser = User(
+            id: userId,
+            firstName: firstName,
+            age: age,
+            gender: gender,
+            genderPreference: genderPreference,
+            email: email,
+            pictureURLs: pictureURLs,
+            approachLine: approachLine
+        )
+        
+        try await Firestore.firestore().collection("users").document(userId).setData(from: newUser)
+        
+        DispatchQueue.main.async {
+            self.currentUser = newUser
+            self.isLoggedIn = true
+        }
+    }
+
+    // Custom error types
+    enum ImageError: LocalizedError {
+        case processingFailed(index: Int)
+        case missingMetadata
+        case unknownUploadError
+        case verificationFailed(index: Int)
+        case noValidImages
+        
+        var errorDescription: String? {
+            switch self {
+            case .processingFailed(let index):
+                return "Couldn't process image \(index). Please try another photo."
+            case .missingMetadata:
+                return "Image upload didn't return required metadata."
+            case .unknownUploadError:
+                return "An unknown error occurred during upload."
+            case .verificationFailed(let index):
+                return "Image \(index) failed verification. Please retry."
+            case .noValidImages:
+                return "No valid images were uploaded."
             }
-            
-            print("🎉 Account creation completed successfully!")
-        } catch {
-            print("❌ Account creation failed: \(error.localizedDescription)")
-            DispatchQueue.main.async {
-                self.errorMessage = error.localizedDescription
-            }
-            throw error
         }
     }
     
@@ -930,15 +964,7 @@ class ContentModel: NSObject, ObservableObject {
         }
     }
     
-    private func preloadImagesForUsers(_ users: [User]) async {
-        await withTaskGroup(of: Void.self) { group in
-            for user in users {
-                group.addTask {
-                    await self.preloadImagesForUser(user)
-                }
-            }
-        }
-    }
+     
     
     //=======MATCHES AND MESSAGING========
     

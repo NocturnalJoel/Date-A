@@ -23,7 +23,7 @@ struct HomeView: View {
                 // Main Content Area
                 ZStack {
                     // 1. Loading State (Spinner/Shimmer)
-                    if isLoading {
+                    if isLoading && model.profileStack.isEmpty {
                         ProfileCardPlaceholder()
                             .transition(.opacity)
                     }
@@ -33,7 +33,7 @@ struct HomeView: View {
                         ForEach(Array(model.profileStack.enumerated()), id: \.element.id) { index, user in
                             ProfileCardView(user: user, stampType: $stampType)
                                 .zIndex(Double(model.profileStack.count - index))
-                                .opacity(index == 0 ? 1 : 0.05)
+                                .opacity(index == 0 ? 1 : 0)
                                 .id("\(user.id)_\(index)")
                         }
                     }
@@ -81,19 +81,11 @@ struct HomeView: View {
             .onAppear {
                 Task {
                     isLoading = true
-                    
                     try await model.fetchMatches()
                     isLoading = false
                 }
             }
-            // Smooth moon level transitions
-            .onChange(of: model.currentMoonLevel) { _ in
-                Task {
-                    isLoading = true
-                    
-                    isLoading = false
-                }
-            }
+            
         }
     }
 }
