@@ -63,8 +63,6 @@ struct HomeView: View {
                     stampType: $stampType
                 )
                 .environmentObject(model)
-                .opacity(isLoading ? 0 : 1)
-                .animation(.easeInOut(duration: 0.3), value: isLoading)
             }
             .navigationBarHidden(true)
             .overlay(

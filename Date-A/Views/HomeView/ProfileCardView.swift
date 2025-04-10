@@ -30,7 +30,6 @@ struct ProfileCardView: View {
                                 image
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
-                                let _ = debugPrint("✅ Loaded image: \(url)")
                             case .failure(_):
                                 
                                 Image(systemName: "person.fill")
@@ -40,7 +39,6 @@ struct ProfileCardView: View {
                                     .foregroundColor(.orange)
                                 
                             case .empty:
-                                let _ = debugPrint("⏳ Loading image: \(url)")
                                 Color.gray.opacity(0.1)
                                     .overlay(
                                                 ShimmerEffectBox()
